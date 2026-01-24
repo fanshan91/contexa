@@ -1,0 +1,277 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum TranslationStatus {
+  pending
+  needs_update
+  needs_review
+  ready
+  approved
+}
+
+model SystemMeta {
+  key         String   @id
+  value       String
+  description String?
+  updatedAt   DateTime @updatedAt
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  name          String?
+  email         String    @unique
+  passwordHash  String
+  role          String    @default("member")
+  isSystemAdmin Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  teamMembers       TeamMember[]
+  invitationsSent   Invitation[]     @relation("InvitationInvitedBy")
+  activityLogs      ActivityLog[]
+  projectMembers    ProjectMember[]
+  translationLocks  TranslationPageLock[]
+  projectsCreated   Project[]        @relation("ProjectCreatedBy")
+  projectInvitationsSent ProjectInvitation[] @relation("ProjectInvitationInvitedBy")
+  localePreferences UserProjectLocalePreference[]
+}
+
+model Team {
+  id                 Int      @id @default(autoincrement())
+  name               String
+  stripeCustomerId   String?  @unique
+  stripeSubscriptionId String? @unique
+  stripeProductId    String?
+  planName           String?
+  subscriptionStatus String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  teamMembers  TeamMember[]
+  activityLogs ActivityLog[]
+  invitations  Invitation[]
+}
+
+model TeamMember {
+  id       Int      @id @default(autoincrement())
+  userId   Int
+  teamId   Int
+  role     String
+  joinedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+  team Team @relation(fields: [teamId], references: [id])
+}
+
+model ActivityLog {
+  id        Int      @id @default(autoincrement())
+  teamId    Int
+  userId    Int?
+  action    String
+  timestamp DateTime @default(now())
+  ipAddress String?
+
+  team Team  @relation(fields: [teamId], references: [id])
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId, timestamp])
+}
+
+model Invitation {
+  id        Int      @id @default(autoincrement())
+  teamId    Int
+  email     String
+  role      String
+  invitedBy Int
+  invitedAt DateTime @default(now())
+  status    String   @default("pending")
+
+  team Team @relation(fields: [teamId], references: [id])
+  inviter User @relation("InvitationInvitedBy", fields: [invitedBy], references: [id])
+
+  @@index([teamId, status])
+}
+
+model Project {
+  id           Int      @id @default(autoincrement())
+  name         String
+  createdByUserId Int?
+  sourceLocale String
+  description  String?
+  qualityMode  String   @default("standard")
+  translationAdapter String @default("tbd")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  locales     ProjectLocale[]
+  members     ProjectMember[]
+  entries     Entry[]
+  translations Translation[]
+  pages       Page[]
+  locks       TranslationPageLock[]
+  createdBy   User?    @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id])
+  invitations ProjectInvitation[]
+  localePreferences UserProjectLocalePreference[]
+
+  @@unique([name])
+}
+
+model ProjectLocale {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  locale    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, locale])
+  @@index([projectId])
+}
+
+model ProjectMember {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  userId     Int
+  role       String
+  canReview  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+}
+
+model ProjectInvitation {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  email     String
+  role      String
+  canReview Boolean  @default(false)
+  invitedBy Int
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  inviter User    @relation("ProjectInvitationInvitedBy", fields: [invitedBy], references: [id])
+
+  @@unique([projectId, email])
+  @@index([projectId, status])
+}
+
+model UserProjectLocalePreference {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  projectId Int
+  locale    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId, locale])
+  @@index([projectId, userId])
+}
+
+model Entry {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  key         String
+  sourceText  String
+  sourceLocale String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project      Project        @relation(fields: [projectId], references: [id])
+  translations Translation[]
+  placements   EntryPlacement[]
+
+  @@unique([projectId, key])
+  @@index([projectId])
+}
+
+model Translation {
+  id        Int              @id @default(autoincrement())
+  entryId   Int
+  projectId Int
+  locale    String
+  text      String?
+  status    TranslationStatus @default(pending)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  entry   Entry   @relation(fields: [entryId], references: [id])
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([entryId, locale])
+  @@index([projectId, locale, status])
+}
+
+model Page {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  route     String
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project     Project        @relation(fields: [projectId], references: [id])
+  modules     Module[]
+  placements  EntryPlacement[]
+  locks       TranslationPageLock[]
+
+  @@unique([projectId, route])
+}
+
+model Module {
+  id        Int      @id @default(autoincrement())
+  pageId    Int
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  page       Page            @relation(fields: [pageId], references: [id])
+  placements EntryPlacement[]
+}
+
+model EntryPlacement {
+  id       Int  @id @default(autoincrement())
+  entryId  Int
+  pageId   Int
+  moduleId Int?
+
+  entry  Entry  @relation(fields: [entryId], references: [id])
+  page   Page   @relation(fields: [pageId], references: [id])
+  module Module? @relation(fields: [moduleId], references: [id])
+
+  @@unique([entryId, pageId, moduleId])
+  @@index([pageId])
+}
+
+model TranslationPageLock {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  pageId    Int
+  locale    String
+  userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  page    Page    @relation(fields: [pageId], references: [id])
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@index([projectId, pageId, locale])
+}

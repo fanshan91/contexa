@@ -11,8 +11,9 @@ import {
   CheckCircle,
   type LucideIcon,
 } from 'lucide-react';
-import { ActivityType } from '@/lib/db/schema';
+import { ActivityType } from '@/lib/db/types';
 import { getActivityLogs } from '@/lib/db/queries';
+import { getLocale, getTranslations } from 'next-intl/server';
 
 const iconMap: Record<ActivityType, LucideIcon> = {
   [ActivityType.SIGN_UP]: UserPlus,
@@ -27,67 +28,67 @@ const iconMap: Record<ActivityType, LucideIcon> = {
   [ActivityType.ACCEPT_INVITATION]: CheckCircle,
 };
 
-function getRelativeTime(date: Date) {
+function getRelativeTime(date: Date, locale: string, t: (key: string, values?: any) => string) {
   const now = new Date();
   const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
 
-  if (diffInSeconds < 60) return 'just now';
+  if (diffInSeconds < 60) return t('time.justNow');
   if (diffInSeconds < 3600)
-    return `${Math.floor(diffInSeconds / 60)} minutes ago`;
+    return t('time.minutesAgo', { minutes: Math.floor(diffInSeconds / 60) });
   if (diffInSeconds < 86400)
-    return `${Math.floor(diffInSeconds / 3600)} hours ago`;
+    return t('time.hoursAgo', { hours: Math.floor(diffInSeconds / 3600) });
   if (diffInSeconds < 604800)
-    return `${Math.floor(diffInSeconds / 86400)} days ago`;
-  return date.toLocaleDateString();
+    return t('time.daysAgo', { days: Math.floor(diffInSeconds / 86400) });
+  return date.toLocaleDateString(locale);
 }
 
-function formatAction(action: ActivityType): string {
+function formatAction(action: ActivityType, t: (key: string, values?: any) => string): string {
   switch (action) {
     case ActivityType.SIGN_UP:
-      return 'You signed up';
+      return t('actions.signUp');
     case ActivityType.SIGN_IN:
-      return 'You signed in';
+      return t('actions.signIn');
     case ActivityType.SIGN_OUT:
-      return 'You signed out';
+      return t('actions.signOut');
     case ActivityType.UPDATE_PASSWORD:
-      return 'You changed your password';
+      return t('actions.updatePassword');
     case ActivityType.DELETE_ACCOUNT:
-      return 'You deleted your account';
+      return t('actions.deleteAccount');
     case ActivityType.UPDATE_ACCOUNT:
-      return 'You updated your account';
+      return t('actions.updateAccount');
     case ActivityType.CREATE_TEAM:
-      return 'You created a new team';
+      return t('actions.createTeam');
     case ActivityType.REMOVE_TEAM_MEMBER:
-      return 'You removed a team member';
+      return t('actions.removeTeamMember');
     case ActivityType.INVITE_TEAM_MEMBER:
-      return 'You invited a team member';
+      return t('actions.inviteTeamMember');
     case ActivityType.ACCEPT_INVITATION:
-      return 'You accepted an invitation';
+      return t('actions.acceptInvitation');
     default:
-      return 'Unknown action occurred';
+      return t('actions.unknown');
   }
 }
 
 export default async function ActivityPage() {
-  const logs = await getActivityLogs();
+  const locale = await getLocale();
+  const t = await getTranslations('activity');
+  const logs: Awaited<ReturnType<typeof getActivityLogs>> = await getActivityLogs();
 
   return (
     <section className="flex-1 p-4 lg:p-8">
       <h1 className="text-lg lg:text-2xl font-medium text-gray-900 mb-6">
-        Activity Log
+        {t('title')}
       </h1>
       <Card>
         <CardHeader>
-          <CardTitle>Recent Activity</CardTitle>
+          <CardTitle>{t('recentActivity')}</CardTitle>
         </CardHeader>
         <CardContent>
           {logs.length > 0 ? (
             <ul className="space-y-4">
               {logs.map((log) => {
                 const Icon = iconMap[log.action as ActivityType] || Settings;
-                const formattedAction = formatAction(
-                  log.action as ActivityType
-                );
+                const formattedAction = formatAction(log.action as ActivityType, t);
 
                 return (
                   <li key={log.id} className="flex items-center space-x-4">
@@ -97,10 +98,10 @@ export default async function ActivityPage() {
                     <div className="flex-1">
                       <p className="text-sm font-medium text-gray-900">
                         {formattedAction}
-                        {log.ipAddress && ` from IP ${log.ipAddress}`}
+                        {log.ipAddress && t('fromIp', { ip: log.ipAddress })}
                       </p>
                       <p className="text-xs text-gray-500">
-                        {getRelativeTime(new Date(log.timestamp))}
+                        {getRelativeTime(new Date(log.timestamp), locale, t)}
                       </p>
                     </div>
                   </li>
@@ -111,11 +112,10 @@ export default async function ActivityPage() {
             <div className="flex flex-col items-center justify-center text-center py-12">
               <AlertCircle className="h-12 w-12 text-orange-500 mb-4" />
               <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                No activity yet
+                {t('emptyTitle')}
               </h3>
               <p className="text-sm text-gray-500 max-w-sm">
-                When you perform actions like signing in or updating your
-                account, they'll appear here.
+                {t('emptyDescription')}
               </p>
             </div>
           )}

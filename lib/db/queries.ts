@@ -1,8 +1,6 @@
-import { desc, and, eq, isNull } from 'drizzle-orm';
-import { db } from './drizzle';
-import { activityLogs, teamMembers, teams, users } from './schema';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
+import { prisma } from '@/lib/db/prisma';
 
 export async function getUser() {
   const sessionCookie = (await cookies()).get('session');
@@ -10,7 +8,12 @@ export async function getUser() {
     return null;
   }
 
-  const sessionData = await verifyToken(sessionCookie.value);
+  let sessionData: Awaited<ReturnType<typeof verifyToken>> | null = null;
+  try {
+    sessionData = await verifyToken(sessionCookie.value);
+  } catch {
+    return null;
+  }
   if (
     !sessionData ||
     !sessionData.user ||
@@ -23,27 +26,15 @@ export async function getUser() {
     return null;
   }
 
-  const user = await db
-    .select()
-    .from(users)
-    .where(and(eq(users.id, sessionData.user.id), isNull(users.deletedAt)))
-    .limit(1);
-
-  if (user.length === 0) {
-    return null;
-  }
-
-  return user[0];
+  return await prisma.user.findFirst({
+    where: { id: sessionData.user.id, deletedAt: null }
+  });
 }
 
 export async function getTeamByStripeCustomerId(customerId: string) {
-  const result = await db
-    .select()
-    .from(teams)
-    .where(eq(teams.stripeCustomerId, customerId))
-    .limit(1);
-
-  return result.length > 0 ? result[0] : null;
+  return await prisma.team.findUnique({
+    where: { stripeCustomerId: customerId }
+  });
 }
 
 export async function updateTeamSubscription(
@@ -55,27 +46,21 @@ export async function updateTeamSubscription(
     subscriptionStatus: string;
   }
 ) {
-  await db
-    .update(teams)
-    .set({
-      ...subscriptionData,
-      updatedAt: new Date()
-    })
-    .where(eq(teams.id, teamId));
+  await prisma.team.update({
+    where: { id: teamId },
+    data: {
+      ...subscriptionData
+    }
+  });
 }
 
 export async function getUserWithTeam(userId: number) {
-  const result = await db
-    .select({
-      user: users,
-      teamId: teamMembers.teamId
-    })
-    .from(users)
-    .leftJoin(teamMembers, eq(users.id, teamMembers.userId))
-    .where(eq(users.id, userId))
-    .limit(1);
-
-  return result[0];
+  const teamMember = await prisma.teamMember.findFirst({
+    where: { userId },
+    select: { teamId: true }
+  });
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  return user ? { user, teamId: teamMember?.teamId ?? null } : null;
 }
 
 export async function getActivityLogs() {
@@ -84,19 +69,22 @@ export async function getActivityLogs() {
     throw new Error('User not authenticated');
   }
 
-  return await db
-    .select({
-      id: activityLogs.id,
-      action: activityLogs.action,
-      timestamp: activityLogs.timestamp,
-      ipAddress: activityLogs.ipAddress,
-      userName: users.name
-    })
-    .from(activityLogs)
-    .leftJoin(users, eq(activityLogs.userId, users.id))
-    .where(eq(activityLogs.userId, user.id))
-    .orderBy(desc(activityLogs.timestamp))
-    .limit(10);
+  const logs = await prisma.activityLog.findMany({
+    where: { userId: user.id },
+    orderBy: { timestamp: 'desc' },
+    take: 10,
+    include: {
+      user: { select: { name: true } }
+    }
+  });
+
+  return logs.map((log) => ({
+    id: log.id,
+    action: log.action,
+    timestamp: log.timestamp,
+    ipAddress: log.ipAddress,
+    userName: log.user?.name ?? null
+  }));
 }
 
 export async function getTeamForUser() {
@@ -105,20 +93,14 @@ export async function getTeamForUser() {
     return null;
   }
 
-  const result = await db.query.teamMembers.findFirst({
-    where: eq(teamMembers.userId, user.id),
-    with: {
+  const result = await prisma.teamMember.findFirst({
+    where: { userId: user.id },
+    include: {
       team: {
-        with: {
+        include: {
           teamMembers: {
-            with: {
-              user: {
-                columns: {
-                  id: true,
-                  name: true,
-                  email: true
-                }
-              }
+            include: {
+              user: { select: { id: true, name: true, email: true } }
             }
           }
         }
@@ -126,5 +108,5 @@ export async function getTeamForUser() {
     }
   });
 
-  return result?.team || null;
+  return result?.team ?? null;
 }

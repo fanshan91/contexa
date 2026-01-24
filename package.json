@@ -1,16 +1,25 @@
 {
   "private": true,
   "scripts": {
+    "postinstall": "prisma generate",
+    "predev": "prisma generate",
+    "prebuild": "prisma generate",
     "dev": "next dev --turbopack",
     "build": "next build",
     "start": "next start",
-    "db:setup": "pnpm db:migrate && pnpm db:seed",
-    "db:seed": "npx tsx lib/db/seed.ts",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
-    "db:studio": "drizzle-kit studio"
+    "test:api": "node scripts/test-api-me-password.mjs",
+    "db:setup": "pnpm db:generate && pnpm db:migrate && pnpm db:seed",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
+    "db:migrate:dev": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@prisma/client": "^6.2.1",
     "@tailwindcss/postcss": "4.1.7",
     "@types/node": "^22.15.18",
     "@types/react": "19.1.4",
@@ -26,6 +35,7 @@
     "jose": "^6.0.11",
     "lucide-react": "^0.511.0",
     "next": "15.6.0-canary.59",
+    "next-intl": "^4.7.0",
     "postcss": "^8.5.3",
     "radix-ui": "^1.4.2",
     "react": "19.1.0",
@@ -39,6 +49,8 @@
     "zod": "^3.24.4"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.13"
+    "@types/better-sqlite3": "^7.6.13",
+    "prisma": "^6.2.1",
+    "tsx": "^4.19.2"
   }
 }

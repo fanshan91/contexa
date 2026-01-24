@@ -9,8 +9,12 @@ import { Label } from '@/components/ui/label';
 import { CircleIcon, Loader2 } from 'lucide-react';
 import { signIn, signUp } from './actions';
 import { ActionState } from '@/lib/auth/middleware';
+import { FormError } from '@/components/form-error';
+import { useTranslations } from 'next-intl';
+import { LanguageSwitcher } from '@/components/language-switcher';
 
 export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
+  const t = useTranslations('login');
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect');
   const priceId = searchParams.get('priceId');
@@ -23,13 +27,14 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
   return (
     <div className="min-h-[100dvh] flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8 bg-gray-50">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
+        <div className="flex items-center justify-end">
+          <LanguageSwitcher />
+        </div>
         <div className="flex justify-center">
           <CircleIcon className="h-12 w-12 text-orange-500" />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          {mode === 'signin'
-            ? 'Sign in to your account'
-            : 'Create your account'}
+          {mode === 'signin' ? t('titleSignIn') : t('titleSignUp')}
         </h2>
       </div>
 
@@ -43,19 +48,21 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               htmlFor="email"
               className="block text-sm font-medium text-gray-700"
             >
-              Email
+              {t('accountLabel')}
             </Label>
             <div className="mt-1">
               <Input
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
+                type="text"
+                autoComplete="username"
                 defaultValue={state.email}
                 required
+                minLength={mode === 'signin' ? 5 : 6}
                 maxLength={50}
+                pattern="[A-Za-z0-9.@]+"
                 className="appearance-none rounded-full relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-orange-500 focus:border-orange-500 focus:z-10 sm:text-sm"
-                placeholder="Enter your email"
+                placeholder={t('accountPlaceholder')}
               />
             </div>
           </div>
@@ -65,7 +72,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               htmlFor="password"
               className="block text-sm font-medium text-gray-700"
             >
-              Password
+              {t('passwordLabel')}
             </Label>
             <div className="mt-1">
               <Input
@@ -77,17 +84,21 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
                 }
                 defaultValue={state.password}
                 required
-                minLength={8}
+                minLength={6}
                 maxLength={100}
+                pattern="[A-Za-z0-9.@]+"
                 className="appearance-none rounded-full relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-orange-500 focus:border-orange-500 focus:z-10 sm:text-sm"
-                placeholder="Enter your password"
+                placeholder={t('passwordPlaceholder')}
               />
             </div>
+            {mode === 'signin' ? (
+              <p className="mt-2 text-sm text-gray-500">
+                {t('forgotPasswordHint')}
+              </p>
+            ) : null}
           </div>
 
-          {state?.error && (
-            <div className="text-red-500 text-sm">{state.error}</div>
-          )}
+          <FormError message={state?.error} />
 
           <div>
             <Button
@@ -98,12 +109,12 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               {pending ? (
                 <>
                   <Loader2 className="animate-spin mr-2 h-4 w-4" />
-                  Loading...
+                  {t('submitLoading')}
                 </>
               ) : mode === 'signin' ? (
-                'Sign in'
+                t('submitSignIn')
               ) : (
-                'Sign up'
+                t('submitSignUp')
               )}
             </Button>
           </div>
@@ -117,8 +128,8 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
             <div className="relative flex justify-center text-sm">
               <span className="px-2 bg-gray-50 text-gray-500">
                 {mode === 'signin'
-                  ? 'New to our platform?'
-                  : 'Already have an account?'}
+                  ? t('switchPromptSignIn')
+                  : t('switchPromptSignUp')}
               </span>
             </div>
           </div>
@@ -130,9 +141,7 @@ export function Login({ mode = 'signin' }: { mode?: 'signin' | 'signup' }) {
               }${priceId ? `&priceId=${priceId}` : ''}`}
               className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-full shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500"
             >
-              {mode === 'signin'
-                ? 'Create an account'
-                : 'Sign in to existing account'}
+              {mode === 'signin' ? t('switchToSignUp') : t('switchToSignIn')}
             </Link>
           </div>
         </div>

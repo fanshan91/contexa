@@ -1,32 +1,75 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Users, Settings, Shield, Activity, Menu } from 'lucide-react';
+import { Users, Settings, Shield, ScrollText, Menu } from 'lucide-react';
+import useSWR from 'swr';
+import { User } from '@/lib/db/types';
+
+import { useTranslations } from 'next-intl';
+
+function SidebarNav({
+  navItems,
+  onNavigate
+}: {
+  navItems: Array<{ href: string; icon: typeof Users; label: string }>;
+  onNavigate: () => void;
+}) {
+  const pathname = usePathname();
+
+  const isActive = (href: string) => {
+    return pathname === href;
+  };
+
+  return navItems.map((item) => (
+    <Link key={item.href} href={item.href} passHref>
+      <Button
+        variant={isActive(item.href) ? 'secondary' : 'ghost'}
+        className={`shadow-none my-1 w-full justify-start ${
+          isActive(item.href) ? 'bg-gray-100' : ''
+        }`}
+        onClick={onNavigate}
+      >
+        <item.icon className="h-4 w-4" />
+        {item.label}
+      </Button>
+    </Link>
+  ));
+}
 
 export default function DashboardLayout({
   children
 }: {
   children: React.ReactNode;
 }) {
-  const pathname = usePathname();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const t = useTranslations('sidebar');
+
+  const fetcher = (url: string) =>
+    fetch(url)
+      .then((res) => res.json())
+      .then((json) => (json?.ok ? json.data : null));
+
+  const { data: user } = useSWR<User>('/api/user', fetcher);
 
   const navItems = [
-    { href: '/dashboard', icon: Users, label: 'Team' },
-    { href: '/dashboard/general', icon: Settings, label: 'General' },
-    { href: '/dashboard/activity', icon: Activity, label: 'Activity' },
-    { href: '/dashboard/security', icon: Shield, label: 'Security' }
-  ];
+    { href: '/dashboard', icon: Users, label: t('projects') },
+    { href: '/dashboard/users', icon: Users, label: t('users') },
+    { href: '/dashboard/general', icon: Settings, label: t('general') },
+    { href: '/dashboard/system', icon: Settings, label: t('settings') },
+    { href: '/dashboard/activity', icon: ScrollText, label: t('activity') },
+  ].filter((item) =>
+    item.href === '/dashboard/users' ? user?.isSystemAdmin : true
+  );
 
   return (
     <div className="flex flex-col min-h-[calc(100dvh-68px)] max-w-7xl mx-auto w-full">
       {/* Mobile header */}
       <div className="lg:hidden flex items-center justify-between bg-white border-b border-gray-200 p-4">
         <div className="flex items-center">
-          <span className="font-medium">Settings</span>
+          <span className="font-medium">{t('mobileTitle')}</span>
         </div>
         <Button
           className="-mr-3"
@@ -34,7 +77,7 @@ export default function DashboardLayout({
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
         >
           <Menu className="h-6 w-6" />
-          <span className="sr-only">Toggle sidebar</span>
+          <span className="sr-only">{t('toggleSidebar')}</span>
         </Button>
       </div>
 
@@ -48,20 +91,12 @@ export default function DashboardLayout({
           }`}
         >
           <nav className="h-full overflow-y-auto p-4">
-            {navItems.map((item) => (
-              <Link key={item.href} href={item.href} passHref>
-                <Button
-                  variant={pathname === item.href ? 'secondary' : 'ghost'}
-                  className={`shadow-none my-1 w-full justify-start ${
-                    pathname === item.href ? 'bg-gray-100' : ''
-                  }`}
-                  onClick={() => setIsSidebarOpen(false)}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.label}
-                </Button>
-              </Link>
-            ))}
+            <Suspense fallback={null}>
+              <SidebarNav
+                navItems={navItems}
+                onNavigate={() => setIsSidebarOpen(false)}
+              />
+            </Suspense>
           </nav>
         </aside>
 
