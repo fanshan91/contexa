@@ -26,7 +26,7 @@ export function LogoMark({
       <rect x="8" y="8" width="56" height="56" rx="14" fill="currentColor" />
       <path
         d="M24 30 C30 24, 42 24, 48 30"
-        stroke="hsl(var(--primary-foreground))"
+        stroke="rgb(var(--primary-foreground))"
         strokeWidth="3"
         strokeLinecap="round"
         fill="none"
@@ -34,7 +34,7 @@ export function LogoMark({
       />
       <path
         d="M22 38 C30 32, 42 32, 50 38"
-        stroke="hsl(var(--primary-foreground))"
+        stroke="rgb(var(--primary-foreground))"
         strokeWidth="3"
         strokeLinecap="round"
         fill="none"
@@ -42,7 +42,7 @@ export function LogoMark({
       />
       <path
         d="M24 46 C30 40, 42 40, 48 46"
-        stroke="hsl(var(--primary-foreground))"
+        stroke="rgb(var(--primary-foreground))"
         strokeWidth="3"
         strokeLinecap="round"
         fill="none"

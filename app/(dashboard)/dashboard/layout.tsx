@@ -26,8 +26,14 @@ function SidebarNav({
   return navItems.map((item) => (
     <Link key={item.href} href={item.href} passHref>
       <Button
-        variant={isActive(item.href) ? 'secondary' : 'ghost'}
-        className="shadow-none my-0.5 h-9 w-full justify-start gap-2 px-3 text-sm"
+        variant="ghost"
+        className={[
+          "my-0.5 h-9 w-full justify-start gap-2 px-3 text-sm shadow-none",
+          "text-sidebar-foreground/90 hover:bg-sidebar-accent/10 hover:text-sidebar-accent-foreground",
+          isActive(item.href)
+            ? "bg-sidebar-accent/15 text-sidebar-accent-foreground font-medium relative overflow-hidden before:absolute before:left-0 before:top-1/2 before:h-5 before:w-1 before:-translate-y-1/2 before:rounded-r before:bg-primary"
+            : ""
+        ].join(" ")}
         onClick={onNavigate}
       >
         <item.icon className="h-4 w-4" />
@@ -82,7 +88,7 @@ export default function DashboardLayout({
       <div className="flex flex-1 overflow-hidden h-full">
         {/* Sidebar */}
         <aside
-          className={`w-64 shrink-0 bg-background border-r border-border lg:block ${
+          className={`w-64 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border/12 lg:block ${
             isSidebarOpen ? 'block' : 'hidden'
           } lg:relative absolute inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
             isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
