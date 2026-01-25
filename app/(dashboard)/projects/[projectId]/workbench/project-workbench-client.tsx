@@ -705,89 +705,94 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
             />
           </div>
 
-          <div className="mt-3 space-y-1">
-            {filteredTree.length === 0 ? (
-              <div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">
-                {t('tree.emptySearch')}
-              </div>
-            ) : (
-              filteredTree.map((p) => {
-                const open = expandedPages[p.id] ?? true;
-                const isPageActive = scope.type === 'page' && scope.pageId === p.id;
+          <div className="mt-3 max-h-[calc(100dvh-260px)] overflow-y-auto pr-2 scrollbar-hover">
+            <div className="space-y-1">
+              {filteredTree.length === 0 ? (
+                <div className="rounded-lg border border-border bg-background p-4 text-sm text-muted-foreground">
+                  {t('tree.emptySearch')}
+                </div>
+              ) : (
+                filteredTree.map((p) => {
+                  const open = expandedPages[p.id] ?? true;
+                  const isPageActive = scope.type === 'page' && scope.pageId === p.id;
 
-                return (
-                  <div key={p.id} className="rounded-lg border border-border bg-background">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setExpanded(p.id, !open);
-                        setScope({ type: 'page', pageId: p.id });
-                      }}
-                      className={cn(
-                        'w-full rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-                        isPageActive ? 'bg-accent' : 'hover:bg-accent/60'
-                      )}
-                    >
-                      <div className="flex items-start gap-2">
-                        <span className="mt-0.5 text-muted-foreground">
-                          {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
-                        </span>
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2">
-                            <FileText className="size-4 text-muted-foreground" />
-                            <div className="min-w-0 font-medium text-foreground truncate">{p.route}</div>
-                          </div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                            <span className="truncate">{p.title || t('tree.untitledPage')}</span>
-                            {typeof p.keyCount === 'number' ? (
-                              <span className="shrink-0">· {t('tree.keyCount', { count: p.keyCount })}</span>
-                            ) : null}
+                  return (
+                    <div key={p.id} className="rounded-lg border border-border bg-background">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExpanded(p.id, !open);
+                          setScope({ type: 'page', pageId: p.id });
+                        }}
+                        className={cn(
+                          'w-full rounded-lg px-3 py-2 text-left outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+                          isPageActive ? 'bg-accent' : 'hover:bg-accent/60'
+                        )}
+                      >
+                        <div className="flex items-start gap-2">
+                          <span className="mt-0.5 text-muted-foreground">
+                            {open ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <FileText className="size-4 text-muted-foreground" />
+                              <div className="min-w-0 font-medium text-foreground truncate">{p.route}</div>
+                            </div>
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                              <span className="truncate">{p.title || t('tree.untitledPage')}</span>
+                              {typeof p.keyCount === 'number' ? (
+                                <span className="shrink-0">· {t('tree.keyCount', { count: p.keyCount })}</span>
+                              ) : null}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </button>
+                      </button>
 
-                    {open ? (
-                      <div className="px-2 pb-2">
-                        {p.modules.length === 0 ? (
-                          <div className="px-2 pb-2 text-xs text-muted-foreground">{t('tree.noModules')}</div>
-                        ) : (
-                          <div className="space-y-1">
-                            {p.modules.map((m) => {
-                              const active = scope.type === 'module' && scope.pageId === p.id && scope.moduleId === m.id;
-                              return (
-                                <button
-                                  key={m.id}
-                                  type="button"
-                                  onClick={() => setScope({ type: 'module', pageId: p.id, moduleId: m.id })}
-                                  className={cn(
-                                    'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
-                                    active ? 'bg-accent' : 'hover:bg-accent/60'
-                                  )}
-                                >
-                                  <span className="flex min-w-0 items-center gap-2">
-                                    <Layers className="size-4 text-muted-foreground" />
-                                    <span className="truncate text-foreground">{m.name}</span>
-                                  </span>
-                                  {typeof m.keyCount === 'number' ? (
-                                    <span className="shrink-0 text-xs text-muted-foreground">{t('tree.keyCount', { count: m.keyCount })}</span>
-                                  ) : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })
-            )}
+                      {open ? (
+                        <div className="px-2 pb-2">
+                          {p.modules.length === 0 ? (
+                            <div className="px-2 pb-2 text-xs text-muted-foreground">{t('tree.noModules')}</div>
+                          ) : (
+                            <div className="space-y-1">
+                              {p.modules.map((m) => {
+                                const active =
+                                  scope.type === 'module' && scope.pageId === p.id && scope.moduleId === m.id;
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    onClick={() => setScope({ type: 'module', pageId: p.id, moduleId: m.id })}
+                                    className={cn(
+                                      'flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm outline-none focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+                                      active ? 'bg-accent' : 'hover:bg-accent/60'
+                                    )}
+                                  >
+                                    <span className="flex min-w-0 items-center gap-2">
+                                      <Layers className="size-4 text-muted-foreground" />
+                                      <span className="truncate text-foreground">{m.name}</span>
+                                    </span>
+                                    {typeof m.keyCount === 'number' ? (
+                                      <span className="shrink-0 text-xs text-muted-foreground">
+                                        {t('tree.keyCount', { count: m.keyCount })}
+                                      </span>
+                                    ) : null}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : null}
+                    </div>
+                  );
+                })
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
 
-      <div className="space-y-4">
+      <div className="flex flex-col gap-4 lg:h-[calc(100dvh-220px)] lg:min-h-0">
         <Card>
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -908,7 +913,7 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="flex min-h-0 flex-1 flex-col">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3">
               <CardTitle className="text-base">{t('table.title')}</CardTitle>
@@ -917,16 +922,25 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
               </div>
             </div>
           </CardHeader>
-          <CardContent className="pt-0">
+          <CardContent className="min-h-0 flex-1 pt-0">
             {visibleEntries.length === 0 ? (
               <div className="rounded-lg border border-border bg-background p-6 text-sm">
                 <div className="font-medium text-foreground">{t('table.emptyTitle')}</div>
                 <div className="mt-1 text-muted-foreground">{t('table.emptyDesc')}</div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead className="text-xs text-muted-foreground">
+              <div className="min-h-0 flex-1 overflow-auto scrollbar-hover">
+                <table className="w-full min-w-[1040px] table-fixed text-sm">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col className="w-[260px]" />
+                    <col className="w-[34%]" />
+                    <col className="w-[34%]" />
+                    <col className="w-[120px]" />
+                    <col className="w-[160px]" />
+                    <col className="w-[96px]" />
+                  </colgroup>
+                  <thead className="sticky top-0 z-10 bg-card text-xs text-muted-foreground">
                     <tr className="border-b border-border">
                       <th className="py-2 pr-3 text-left font-medium">
                         <span className="sr-only">{t('table.select')}</span>
@@ -975,7 +989,7 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
                             <button
                               type="button"
                               onClick={() => setDetailsKey(e.key)}
-                              className="group inline-flex max-w-[240px] items-center gap-2 text-left"
+                              className="group inline-flex w-full items-center gap-2 text-left"
                             >
                               <span className="truncate font-medium text-foreground group-hover:underline">
                                 {e.key}
@@ -991,17 +1005,30 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
                           </td>
 
                           <td className="py-3 pr-3">
-                            <div className="max-w-[360px] text-foreground">{e.source}</div>
+                            <div className="whitespace-pre-wrap break-words text-foreground">{e.source}</div>
                           </td>
 
                           <td className="py-3 pr-3">
-                            <Input
+                            <textarea
                               value={draft}
                               onChange={(ev) =>
                                 setDrafts((prev) => ({ ...prev, [e.key]: ev.target.value }))
                               }
+                              onInput={(ev) => {
+                                const el = ev.currentTarget;
+                                el.style.height = '0px';
+                                el.style.height = `${el.scrollHeight}px`;
+                              }}
+                              ref={(el) => {
+                                if (!el) return;
+                                el.style.height = '0px';
+                                el.style.height = `${el.scrollHeight}px`;
+                              }}
                               placeholder={t('table.targetPlaceholder')}
-                              className={cn(dirty && 'border-primary/40')}
+                              className={cn(
+                                'min-h-10 w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]',
+                                dirty && 'border-primary/40'
+                              )}
                             />
                             {dirty ? (
                               <div className="mt-1 text-xs text-muted-foreground">
@@ -1022,23 +1049,26 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
                           </td>
 
                           <td className="py-3 pr-3">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Button
-                                className="h-8 px-3"
-                                disabled={!dirty}
-                                onClick={() => trySave(e.key)}
-                              >
-                                <Save className="mr-2 size-4" />
-                                {t('table.save')}
+                            <div className="flex items-center gap-2">
+                              <Button size="icon" disabled={!dirty} onClick={() => trySave(e.key)} aria-label={t('table.save')}>
+                                <Save className="size-4" />
                               </Button>
                               <Button
+                                size="icon"
                                 variant="outline"
-                                className="h-8 px-3"
                                 disabled={!dirty}
                                 onClick={() => resetDraft(e.key)}
+                                aria-label={t('table.reset')}
                               >
-                                <RotateCcw className="mr-2 size-4" />
-                                {t('table.reset')}
+                                <RotateCcw className="size-4" />
+                              </Button>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setDetailsKey(e.key)}
+                                aria-label={t('details.title')}
+                              >
+                                <ChevronRight className="size-4" />
                               </Button>
                             </div>
                           </td>

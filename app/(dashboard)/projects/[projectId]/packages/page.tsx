@@ -18,7 +18,7 @@ export default async function ProjectPackagesPage({
           <h1 className="text-xl font-semibold text-foreground lg:text-2xl">
             {t('title')}
           </h1>
-          <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p>
+          {/* <p className="mt-1 text-sm text-muted-foreground">{t('subtitle')}</p> */}
         </div>
       </div>
 

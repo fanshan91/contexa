@@ -245,6 +245,7 @@ export function ProjectPackagesClient({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [downloadLocale, setDownloadLocale] = useState(mockProject.sourceLocale);
   const [downloadMode, setDownloadMode] = useState<DownloadMode>('fallback');
+  const [exportOpen, setExportOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, Entry>>(() =>
     buildMockEntries(mockProject.sourceLocale, mockProject.targetLocales).entriesByKey
   );
@@ -785,23 +786,19 @@ export function ProjectPackagesClient({
               );
             })}
           </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="rounded-lg border bg-card px-3 py-2">
-              <div className="text-xs text-muted-foreground">词条总数</div>
-              <div className="mt-0.5 text-base font-semibold text-foreground">{currentLocaleStats.total}</div>
-            </div>
-            <div className="rounded-lg border bg-card px-3 py-2">
-              <div className="text-xs text-muted-foreground">已填写（当前语言）</div>
-              <div className="mt-0.5 text-base font-semibold text-foreground">{currentLocaleStats.filled}</div>
-            </div>
-            <div className="rounded-lg border bg-card px-3 py-2">
-              <div className="text-xs text-muted-foreground">待审核</div>
-              <div className="mt-0.5 text-base font-semibold text-foreground">{currentLocaleStats.pending}</div>
-            </div>
-            <div className="rounded-lg border bg-card px-3 py-2">
-              <div className="text-xs text-muted-foreground">有更新</div>
-              <div className="mt-0.5 text-base font-semibold text-foreground">{currentLocaleStats.hasUpdate}</div>
-            </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+              词条总数 {currentLocaleStats.total}
+            </span>
+            <span className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+              已填写 {currentLocaleStats.filled}
+            </span>
+            <span className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+              待审核 {currentLocaleStats.pending}
+            </span>
+            <span className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+              有更新 {currentLocaleStats.hasUpdate}
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -1114,18 +1111,121 @@ export function ProjectPackagesClient({
           </Dialog>
         </>
       ) : (
-        <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-          <div className="space-y-6">
+        <div className="grid gap-4 lg:grid-cols-[1fr_420px]">
+          <div className="space-y-4">
             <Card>
               <CardHeader>
                 <CardTitle className="text-base">上传语言包（{localeLabel(selectedLocale)}）</CardTitle>
                 <CardDescription>仅支持扁平 key-value JSON；一份 JSON 对应一种语言。</CardDescription>
-                <CardAction>
-                  <Button
-                    type="button"
-                    onClick={handlePickFile}
-                    disabled={uploadBusy}
+                <CardAction className="flex items-center gap-2">
+                  <Dialog
+                    open={exportOpen}
+                    onOpenChange={(open) => {
+                      setExportOpen(open);
+                      if (open) {
+                        setDownloadLocale(selectedLocale);
+                        setDownloadMode('fallback');
+                      }
+                    }}
                   >
+                    <DialogTrigger asChild>
+                      <Button type="button" variant="outline" disabled={uploadBusy}>
+                        <Download />
+                        导出…
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent className="max-w-lg">
+                      <DialogHeader>
+                        <DialogTitle className="text-lg">导出语言包</DialogTitle>
+                        <DialogDescription>选择语言与导出选项，生成 JSON 文件下载。</DialogDescription>
+                      </DialogHeader>
+
+                      <div className="grid gap-4">
+                        <div className="grid gap-2">
+                          <Label htmlFor="download-locale">导出语言</Label>
+                          <select
+                            id="download-locale"
+                            className={cn(selectClassName())}
+                            value={downloadLocale}
+                            onChange={(e) => setDownloadLocale(e.target.value)}
+                          >
+                            {allLocales.map((l) => (
+                              <option key={l} value={l}>
+                                {localeLabel(l)}
+                              </option>
+                            ))}
+                          </select>
+                          <div className="text-sm text-muted-foreground">
+                            文件名：project-{projectId}.{downloadLocale}.json
+                          </div>
+                        </div>
+
+                        <div className="grid gap-2">
+                          <Label>导出选项（MVP）</Label>
+                          <div className="rounded-md border bg-background p-3">
+                            <RadioGroup
+                              value={downloadMode}
+                              onValueChange={(v) => setDownloadMode(v as DownloadMode)}
+                              className="grid gap-2"
+                            >
+                              <label className="flex items-start gap-2">
+                                <RadioGroupItem value="fallback" />
+                                <div>
+                                  <div className="text-sm text-foreground">未翻译回退源语言（默认）</div>
+                                  <div className="text-sm text-muted-foreground">便于联调与避免空文本</div>
+                                </div>
+                              </label>
+                              <label className="flex items-start gap-2">
+                                <RadioGroupItem value="empty" />
+                                <div>
+                                  <div className="text-sm text-foreground">未翻译导出空字符串</div>
+                                  <div className="text-sm text-muted-foreground">便于定位缺失翻译</div>
+                                </div>
+                              </label>
+                              <label className="flex items-start gap-2">
+                                <RadioGroupItem value="filled" />
+                                <div>
+                                  <div className="text-sm text-foreground">仅导出已填写</div>
+                                  <div className="text-sm text-muted-foreground">仅包含有目标文案的 key</div>
+                                </div>
+                              </label>
+                            </RadioGroup>
+                          </div>
+                        </div>
+
+                        {downloadLocale !== mockProject.sourceLocale ? (
+                          <div className="rounded-lg border bg-card p-4">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-sm text-muted-foreground">
+                                目标语言上传写入后将进入 <span className="text-foreground">待审核</span>；源语言更新会导致译文变为 <span className="text-foreground">有更新</span>。
+                              </div>
+                              <Button asChild variant="outline" size="sm">
+                                <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(downloadLocale)}`}>前往翻译工作台</Link>
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+
+                      <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setExportOpen(false)}>
+                          取消
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            handleDownload();
+                            setExportOpen(false);
+                          }}
+                        >
+                          <Download />
+                          开始导出
+                        </Button>
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
+
+                  <Button type="button" onClick={handlePickFile} disabled={uploadBusy}>
                     {uploadBusy ? <Loader2 className="animate-spin" /> : <Upload />}
                     选择 JSON 文件
                   </Button>
@@ -1264,83 +1364,6 @@ export function ProjectPackagesClient({
                 ) : null}
               </CardContent>
             </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">下载导出</CardTitle>
-                <CardDescription>选择语言并导出 JSON（前端生成下载文件）。</CardDescription>
-                <CardAction>
-                  <Button type="button" onClick={handleDownload}>
-                    <Download />
-                    下载 JSON
-                  </Button>
-                </CardAction>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <Label htmlFor="download-locale">导出语言</Label>
-                    <select
-                      id="download-locale"
-                      className={cn('mt-1', selectClassName())}
-                      value={downloadLocale}
-                      onChange={(e) => setDownloadLocale(e.target.value)}
-                    >
-                      {allLocales.map((l) => (
-                        <option key={l} value={l}>
-                          {localeLabel(l)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label>导出选项（MVP）</Label>
-                    <div className="mt-1 rounded-md border bg-background p-3">
-                      <RadioGroup
-                        value={downloadMode}
-                        onValueChange={(v) => setDownloadMode(v as DownloadMode)}
-                        className="grid gap-2"
-                      >
-                        <label className="flex items-start gap-2">
-                          <RadioGroupItem value="fallback" />
-                          <div>
-                            <div className="text-sm text-foreground">未翻译回退源语言（默认）</div>
-                            <div className="text-sm text-muted-foreground">便于联调与避免空文本</div>
-                          </div>
-                        </label>
-                        <label className="flex items-start gap-2">
-                          <RadioGroupItem value="empty" />
-                          <div>
-                            <div className="text-sm text-foreground">未翻译导出空字符串</div>
-                            <div className="text-sm text-muted-foreground">便于定位缺失翻译</div>
-                          </div>
-                        </label>
-                        <label className="flex items-start gap-2">
-                          <RadioGroupItem value="filled" />
-                          <div>
-                            <div className="text-sm text-foreground">仅导出已填写</div>
-                            <div className="text-sm text-muted-foreground">仅包含有目标文案的 key</div>
-                          </div>
-                        </label>
-                      </RadioGroup>
-                    </div>
-                  </div>
-                </div>
-
-                {downloadLocale !== mockProject.sourceLocale ? (
-                  <div className="rounded-lg border bg-card p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-sm text-muted-foreground">
-                        目标语言上传写入后将进入 <span className="text-foreground">待审核</span>；源语言更新会导致译文变为 <span className="text-foreground">有更新</span>。
-                      </div>
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(downloadLocale)}`}>前往翻译工作台</Link>
-                      </Button>
-                    </div>
-                  </div>
-                ) : null}
-              </CardContent>
-            </Card>
           </div>
 
           <Card id="upload-history">
@@ -1355,7 +1378,7 @@ export function ProjectPackagesClient({
                   <div className="mt-1 text-sm text-muted-foreground">上传一次语言包后，会在这里生成可回溯记录。</div>
                 </div>
               ) : (
-                <div className="overflow-auto rounded-md border">
+                <div className="max-h-[520px] overflow-auto rounded-md border">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b bg-card">
