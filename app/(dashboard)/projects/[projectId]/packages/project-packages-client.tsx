@@ -106,7 +106,8 @@ function parseFlatJsonMap(raw: string): { ok: true; value: Record<string, string
 }
 
 function buildMockEntries(sourceLocale: string, targetLocales: string[]) {
-  const now = Date.now();
+  // Use fixed time for hydration consistency
+  const now = 1769334000000;
   const seed: Array<{ key: string; sourceText: string; translations?: Record<string, { text: string; status: TranslationStatus }> }> = [
     {
       key: 'nav.home',
@@ -250,9 +251,10 @@ export function ProjectPackagesClient({
     buildMockEntries(mockProject.sourceLocale, mockProject.targetLocales).entriesByKey
   );
   const [history, setHistory] = useState<UploadRecord[]>(() => {
-    const now = Date.now();
+    // Use fixed time for hydration consistency
+    const now = 1769334000000;
     const rec: UploadRecord = {
-      id: randomId(),
+      id: 'mock-history-id-1',
       createdAt: now - 1000 * 60 * 60 * 5,
       locale: 'zh-CN',
       operator: 'Victor',
@@ -1026,7 +1028,7 @@ export function ProjectPackagesClient({
                                 <StatusPill status="untranslated" />
                               )}
                             </td>
-                            <td className="px-3 py-2 align-top text-muted-foreground">{formatDateTime(e.updatedAt)}</td>
+                            <td className="px-3 py-2 align-top text-muted-foreground"><span suppressHydrationWarning>{formatDateTime(e.updatedAt)}</span></td>
                             <td className="px-3 py-2 align-top text-right">
                               <Button type="button" variant="outline" size="sm" onClick={() => openEdit(e.key)}>
                                 <Pencil />
@@ -1285,7 +1287,7 @@ export function ProjectPackagesClient({
                       <div>
                         <div className="text-sm font-semibold text-foreground">上传结果摘要</div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {formatDateTime(latestRecord.createdAt)} · {latestRecord.operator}
+                          <span suppressHydrationWarning>{formatDateTime(latestRecord.createdAt)}</span> · {latestRecord.operator}
                         </div>
                       </div>
                       <div className="flex items-center gap-2">
@@ -1383,7 +1385,7 @@ export function ProjectPackagesClient({
                     <tbody>
                       {history.map((r) => (
                         <tr key={r.id} className="border-b last:border-b-0">
-                          <td className="px-3 py-2 align-top text-foreground">{formatDateTime(r.createdAt)}</td>
+                          <td className="px-3 py-2 align-top text-foreground"><span suppressHydrationWarning>{formatDateTime(r.createdAt)}</span></td>
                           <td className="px-3 py-2 align-top">
                             <div className="flex items-center gap-2">
                               <span className="text-foreground">{r.locale}</span>
