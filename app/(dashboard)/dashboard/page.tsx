@@ -89,48 +89,52 @@ export default async function DashboardProjectsPage() {
           </CardHeader>
         </Card>
       ) : (
-        <Card>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground">
-                <tr className="border-b border-border">
-                  <th className="py-2 pr-4">{t('title')}</th>
-                  <th className="py-2 pr-4">{t('sourceLocale')}</th>
-                  <th className="py-2 pr-4 text-right">{t('entryCount')}</th>
-                  <th className="py-2 pr-4">{t('createdAt')}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projects.map((p) => (
-                  <tr key={p.id} className="border-b border-border last:border-0">
-                    <td className="py-3 pr-4">
-                      <div className="min-w-0">
-                        <Link
-                          href={`/projects/${p.id}`}
-                          className="block truncate font-medium text-foreground hover:underline"
-                        >
-                          {p.name}
-                        </Link>
-                        <div className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-                          {p.description || '—'}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+          {projects.map((p) => (
+            <Link
+              key={p.id}
+              href={`/projects/${p.id}`}
+              className="group block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            >
+              <Card className="h-full transition-colors group-hover:bg-muted/30 group-hover:shadow-sm">
+                <CardContent className="flex min-h-40 flex-col p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate font-medium text-foreground group-hover:underline">
+                        {p.name}
+                      </div>
+                      <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
+                        {p.description || '—'}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0 text-right">
+                      <div className="text-xs text-muted-foreground">{t('entryCount')}</div>
+                      <div className="mt-1 font-medium tabular-nums text-foreground">
+                        {p._count.entries}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-auto pt-4">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      <div>
+                        <div className="text-xs text-muted-foreground">{t('sourceLocale')}</div>
+                        <div className="mt-1 truncate text-sm text-foreground">{p.sourceLocale}</div>
+                      </div>
+                      <div className="sm:text-right">
+                        <div className="text-xs text-muted-foreground">{t('createdAt')}</div>
+                        <div className="mt-1 whitespace-nowrap text-sm tabular-nums text-foreground">
+                          {new Date(p.createdAt).toLocaleString(locale, { hour12: false })}
                         </div>
                       </div>
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap text-muted-foreground">
-                      {p.sourceLocale}
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap text-right text-muted-foreground">
-                      {p._count.entries}
-                    </td>
-                    <td className="py-3 pr-4 whitespace-nowrap text-muted-foreground">
-                      {new Date(p.createdAt).toLocaleString(locale, { hour12: false })}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </CardContent>
-        </Card>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
       )}
     </div>
   );

@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useMemo, useRef, useState } from 'react';
-import { Loader2, Upload, Download, Plus, RefreshCcw, Eye } from 'lucide-react';
+import { Loader2, Upload, Download, Plus, RefreshCcw, Eye, Pencil } from 'lucide-react';
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -217,7 +217,13 @@ function selectClassName() {
   return 'h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50';
 }
 
-export function ProjectPackagesClient({ projectId }: { projectId: number }) {
+export function ProjectPackagesClient({
+  projectId,
+  variant = 'entries'
+}: {
+  projectId: number;
+  variant?: 'entries' | 'ops';
+}) {
   const { push } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -278,6 +284,13 @@ export function ProjectPackagesClient({ projectId }: { projectId: number }) {
   const [createTargetText, setCreateTargetText] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
+  const [query, setQuery] = useState('');
+  const [editOpen, setEditOpen] = useState(false);
+  const [editKey, setEditKey] = useState<string | null>(null);
+  const [editSourceText, setEditSourceText] = useState('');
+  const [editTargetText, setEditTargetText] = useState('');
+  const [editError, setEditError] = useState<string | null>(null);
+
   const latestRecord = useMemo(
     () => history.find((h) => h.id === latestRecordId) ?? null,
     [history, latestRecordId]
@@ -309,6 +322,107 @@ export function ProjectPackagesClient({ projectId }: { projectId: number }) {
     setCreateTargetLocale(mockProject.targetLocales[0] ?? mockProject.sourceLocale);
     setCreateTargetText('');
     setCreateError(null);
+  };
+
+  const filteredEntries = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const list = Object.values(entries);
+    if (!q) return list.sort((a, b) => a.key.localeCompare(b.key));
+
+    return list
+      .filter((e) => {
+        if (e.key.toLowerCase().includes(q)) return true;
+        if (e.sourceText.toLowerCase().includes(q)) return true;
+        if (selectedLocale !== mockProject.sourceLocale) {
+          const tr = e.translations[selectedLocale];
+          if (tr?.text?.toLowerCase().includes(q)) return true;
+        }
+        return false;
+      })
+      .sort((a, b) => a.key.localeCompare(b.key));
+  }, [entries, mockProject.sourceLocale, query, selectedLocale]);
+
+  const openEdit = (key: string) => {
+    const entry = entries[key];
+    if (!entry) return;
+
+    setEditKey(key);
+    setEditSourceText(entry.sourceText);
+    setEditTargetText(
+      selectedLocale === mockProject.sourceLocale
+        ? ''
+        : entry.translations[selectedLocale]?.text ?? ''
+    );
+    setEditError(null);
+    setEditOpen(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editKey) return;
+
+    const sourceText = editSourceText.trim();
+    if (!sourceText) {
+      setEditError('请填写源文案。');
+      return;
+    }
+
+    const now = Date.now();
+    const nextTargetText = editTargetText.trim();
+
+    setEntries((prev) => {
+      const existing = prev[editKey];
+      if (!existing) return prev;
+
+      const sourceChanged = existing.sourceText !== sourceText;
+      let nextTranslations: Entry['translations'] = existing.translations;
+
+      if (sourceChanged) {
+        const updatedTranslations: Entry['translations'] = { ...nextTranslations };
+        for (const tLocale of mockProject.targetLocales) {
+          const tr = updatedTranslations[tLocale];
+          if (!tr) continue;
+          if (tr.text.trim().length > 0) {
+            updatedTranslations[tLocale] = {
+              ...tr,
+              status: 'has_update',
+              updatedAt: now
+            };
+          }
+        }
+        nextTranslations = updatedTranslations;
+      }
+
+      if (selectedLocale !== mockProject.sourceLocale) {
+        const current = nextTranslations[selectedLocale] ?? {
+          text: '',
+          status: 'untranslated' as const,
+          updatedAt: existing.updatedAt
+        };
+
+        const nextTr: EntryTranslation = {
+          text: nextTargetText,
+          status: nextTargetText ? 'pending_review' : 'untranslated',
+          updatedAt: now
+        };
+
+        nextTranslations = {
+          ...nextTranslations,
+          [selectedLocale]: current.text === nextTr.text && current.status === nextTr.status ? current : nextTr
+        };
+      }
+
+      const nextEntry: Entry = {
+        ...existing,
+        sourceText,
+        updatedAt: now,
+        translations: nextTranslations
+      };
+
+      return { ...prev, [editKey]: nextEntry };
+    });
+
+    push({ variant: 'default', title: '已保存', message: editKey });
+    setEditOpen(false);
   };
 
   const applySourceUpload = (incoming: Record<string, string>) => {
@@ -692,167 +806,31 @@ export function ProjectPackagesClient({ projectId }: { projectId: number }) {
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
-        <div className="space-y-6">
+      {variant === 'entries' ? (
+        <>
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">上传语言包（{localeLabel(selectedLocale)}）</CardTitle>
-              <CardDescription>仅支持扁平 key-value JSON；一份 JSON 对应一种语言。</CardDescription>
-              <CardAction>
-                <Button
-                  type="button"
-                  onClick={handlePickFile}
-                  disabled={uploadBusy}
-                >
-                  {uploadBusy ? <Loader2 className="animate-spin" /> : <Upload />}
-                  选择 JSON 文件
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="application/json,.json"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  e.target.value = '';
-                  void handleFileChange(file);
-                }}
-              />
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="rounded-lg border bg-card p-4">
-                  <SectionTitle title="结构约束" desc="仅支持扁平 JSON，不支持嵌套对象。" />
-                  <pre className="mt-3 overflow-auto rounded-md border bg-background p-3 text-xs text-foreground">{
-`{
-  "common.save": "保存",
-  "auth.signIn": "登录"
-}`
-                  }</pre>
-                </div>
-                <div className="rounded-lg border bg-card p-4">
-                  <SectionTitle title="命名建议" desc="推荐使用点分隔、稳定语义、避免大小写混用。" />
-                  <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">✅ 推荐</span>
-                      <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">page.login.title</code>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">✅ 推荐</span>
-                      <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">common.save</code>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <span className="text-foreground">⚠️ 避免</span>
-                      <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">SaveButtonText</code>
-                    </div>
-                  </div>
-                </div>
+              <div>
+                <CardTitle className="text-base">词条池</CardTitle>
+                <CardDescription>平台内所有词条展示与维护；导入导出与上传历史已迁移到项目概览。</CardDescription>
               </div>
-
-              {uploadError ? (
-                <div className="rounded-lg border border-destructive/30 bg-card p-4">
-                  <div className="text-sm font-semibold text-destructive">上传失败</div>
-                  <div className="mt-1 text-sm text-muted-foreground">{uploadError}</div>
-                </div>
-              ) : null}
-
-              {latestRecord ? (
-                <div className="rounded-lg border bg-card p-4">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                    <div>
-                      <div className="text-sm font-semibold text-foreground">上传结果摘要</div>
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        {formatDateTime(latestRecord.createdAt)} · {latestRecord.operator}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => openDetails(latestRecord.id)}
-                      >
-                        <Eye />
-                        查看详情
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        asChild
-                      >
-                        <Link href="#upload-history">查看上传历史</Link>
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                    <div className="rounded-md border bg-background px-3 py-2">
-                      <div className="text-xs text-muted-foreground">新增 key 数</div>
-                      <div className="mt-0.5 text-base font-semibold text-foreground">
-                        {latestRecord.summary.added}
-                      </div>
-                    </div>
-                    <div className="rounded-md border bg-background px-3 py-2">
-                      <div className="text-xs text-muted-foreground">更新 key 数</div>
-                      <div className="mt-0.5 text-base font-semibold text-foreground">
-                        {latestRecord.summary.updated}
-                      </div>
-                    </div>
-                    <div className="rounded-md border bg-background px-3 py-2">
-                      <div className="text-xs text-muted-foreground">删除 key 数</div>
-                      <div className="mt-0.5 text-base font-semibold text-foreground">
-                        {latestRecord.summary.missingInUpload}
-                        <span className="ml-2 text-xs font-normal text-muted-foreground">不自动删除</span>
-                      </div>
-                    </div>
-                    {latestRecord.locale === mockProject.sourceLocale ? (
-                      <>
-                        <div className="rounded-md border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">有更新 key 数</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">
-                            {latestRecord.summary.hasUpdate}
-                          </div>
-                        </div>
-                        <div className="rounded-md border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">待审核词条数</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">0</div>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="rounded-md border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">待审核词条数</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">
-                            {latestRecord.summary.pendingReview}
-                          </div>
-                        </div>
-                        <div className="rounded-md border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">被忽略 key 数</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">
-                            {latestRecord.summary.ignored}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">平台内新增词条</CardTitle>
-              <CardDescription>新增的 key 默认进入词条池，后续可在页面/模块中建立归属。</CardDescription>
-              <CardAction>
+              <CardAction className="flex items-center gap-2">
+                <Button asChild variant="outline">
+                  <Link href={`/projects/${projectId}/overview`}>打开项目概览</Link>
+                </Button>
                 <Dialog
                   open={createOpen}
                   onOpenChange={(open) => {
                     setCreateOpen(open);
-                    if (!open) resetCreateForm();
+                    if (open) {
+                      setCreateTargetLocale(
+                        selectedLocale === mockProject.sourceLocale
+                          ? (mockProject.targetLocales[0] ?? mockProject.sourceLocale)
+                          : selectedLocale
+                      );
+                      return;
+                    }
+                    resetCreateForm();
                   }}
                 >
                   <DialogTrigger asChild>
@@ -992,12 +970,24 @@ export function ProjectPackagesClient({ projectId }: { projectId: number }) {
                 </Dialog>
               </CardAction>
             </CardHeader>
-            <CardContent>
-              <div className="grid gap-3 rounded-lg border bg-background p-4">
-                <div className="text-sm font-semibold text-foreground">快速预览（当前选择：{selectedLocale}）</div>
-                <div className="text-sm text-muted-foreground">
-                  这里只做前端展示：上传/新增会更新本页的 Mock 数据与上传历史。
+            <CardContent className="space-y-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="w-full sm:max-w-md">
+                  <Input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="搜索 key / 源文案 / 当前语言"
+                  />
                 </div>
+                <div className="text-sm text-muted-foreground">共 {filteredEntries.length} 条</div>
+              </div>
+
+              {filteredEntries.length === 0 ? (
+                <div className="rounded-lg border bg-background p-6">
+                  <div className="text-sm font-semibold text-foreground">暂无匹配词条</div>
+                  <div className="mt-1 text-sm text-muted-foreground">可尝试清空搜索或新增词条。</div>
+                </div>
+              ) : (
                 <div className="overflow-auto rounded-md border">
                   <table className="w-full text-sm">
                     <thead>
@@ -1006,352 +996,581 @@ export function ProjectPackagesClient({ projectId }: { projectId: number }) {
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">源文案</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">当前语言</th>
                         <th className="px-3 py-2 text-left font-medium text-muted-foreground">状态</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">更新时间</th>
+                        <th className="px-3 py-2 text-right font-medium text-muted-foreground">操作</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {Object.values(entries)
-                        .slice(0, 6)
-                        .map((e) => {
-                          const tr = selectedLocale === mockProject.sourceLocale ? null : e.translations[selectedLocale];
-                          return (
-                            <tr key={e.key} className="border-b last:border-b-0">
-                              <td className="px-3 py-2 align-top">
-                                <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{e.key}</code>
-                              </td>
-                              <td className="px-3 py-2 align-top text-foreground">{e.sourceText}</td>
-                              <td className="px-3 py-2 align-top text-foreground">
-                                {selectedLocale === mockProject.sourceLocale
-                                  ? e.sourceText
-                                  : tr?.text?.trim()
-                                    ? tr.text
-                                    : <span className="text-muted-foreground">—</span>}
-                              </td>
-                              <td className="px-3 py-2 align-top">
-                                {selectedLocale === mockProject.sourceLocale ? (
-                                  <span className="text-xs text-muted-foreground">源语言</span>
-                                ) : tr ? (
-                                  <StatusPill status={tr.status} />
-                                ) : (
-                                  <StatusPill status="untranslated" />
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
+                      {filteredEntries.map((e) => {
+                        const tr = selectedLocale === mockProject.sourceLocale ? null : e.translations[selectedLocale];
+                        const currentText =
+                          selectedLocale === mockProject.sourceLocale
+                            ? e.sourceText
+                            : tr?.text?.trim()
+                              ? tr.text
+                              : '';
+
+                        return (
+                          <tr key={e.key} className="border-b last:border-b-0">
+                            <td className="px-3 py-2 align-top">
+                              <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{e.key}</code>
+                            </td>
+                            <td className="px-3 py-2 align-top text-foreground">
+                              <div className="max-w-[420px] break-words">{e.sourceText}</div>
+                            </td>
+                            <td className="px-3 py-2 align-top text-foreground">
+                              {currentText ? <div className="max-w-[420px] break-words">{currentText}</div> : <span className="text-muted-foreground">—</span>}
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              {selectedLocale === mockProject.sourceLocale ? (
+                                <span className="text-xs text-muted-foreground">源语言</span>
+                              ) : tr ? (
+                                <StatusPill status={tr.status} />
+                              ) : (
+                                <StatusPill status="untranslated" />
+                              )}
+                            </td>
+                            <td className="px-3 py-2 align-top text-muted-foreground">{formatDateTime(e.updatedAt)}</td>
+                            <td className="px-3 py-2 align-top text-right">
+                              <Button type="button" variant="outline" size="sm" onClick={() => openEdit(e.key)}>
+                                <Pencil />
+                                编辑
+                              </Button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
-                <div className="text-xs text-muted-foreground">仅展示前 6 条；真实系统会支持筛选/分页与跳转。</div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">下载导出</CardTitle>
-              <CardDescription>选择语言并导出 JSON（前端生成下载文件）。</CardDescription>
-              <CardAction>
-                <Button type="button" onClick={handleDownload}>
-                  <Download />
-                  下载 JSON
-                </Button>
-              </CardAction>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid gap-4 sm:grid-cols-2">
+          <Dialog
+            open={editOpen}
+            onOpenChange={(open) => {
+              setEditOpen(open);
+              if (!open) {
+                setEditKey(null);
+                setEditSourceText('');
+                setEditTargetText('');
+                setEditError(null);
+              }
+            }}
+          >
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle className="text-lg">编辑词条</DialogTitle>
+                <DialogDescription>
+                  {editKey ? `Key：${editKey}` : '—'}
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="grid gap-4">
                 <div>
-                  <Label htmlFor="download-locale">导出语言</Label>
-                  <select
-                    id="download-locale"
-                    className={cn('mt-1', selectClassName())}
-                    value={downloadLocale}
-                    onChange={(e) => setDownloadLocale(e.target.value)}
-                  >
-                    {allLocales.map((l) => (
-                      <option key={l} value={l}>
-                        {localeLabel(l)}
-                      </option>
-                    ))}
-                  </select>
+                  <Label htmlFor="edit-source">源文案</Label>
+                  <Input
+                    id="edit-source"
+                    value={editSourceText}
+                    onChange={(e) => setEditSourceText(e.target.value)}
+                  />
                 </div>
-                <div>
-                  <Label>导出选项（MVP）</Label>
-                  <div className="mt-1 rounded-md border bg-background p-3">
-                    <RadioGroup
-                      value={downloadMode}
-                      onValueChange={(v) => setDownloadMode(v as DownloadMode)}
-                      className="grid gap-2"
-                    >
-                      <label className="flex items-start gap-2">
-                        <RadioGroupItem value="fallback" />
-                        <div>
-                          <div className="text-sm text-foreground">未翻译回退源语言（默认）</div>
-                          <div className="text-sm text-muted-foreground">便于联调与避免空文本</div>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-2">
-                        <RadioGroupItem value="empty" />
-                        <div>
-                          <div className="text-sm text-foreground">未翻译导出空字符串</div>
-                          <div className="text-sm text-muted-foreground">便于定位缺失翻译</div>
-                        </div>
-                      </label>
-                      <label className="flex items-start gap-2">
-                        <RadioGroupItem value="filled" />
-                        <div>
-                          <div className="text-sm text-foreground">仅导出已填写</div>
-                          <div className="text-sm text-muted-foreground">仅包含有目标文案的 key</div>
-                        </div>
-                      </label>
-                    </RadioGroup>
+                {selectedLocale !== mockProject.sourceLocale ? (
+                  <div>
+                    <Label htmlFor="edit-target">当前语言（{selectedLocale}）</Label>
+                    <Input
+                      id="edit-target"
+                      value={editTargetText}
+                      onChange={(e) => setEditTargetText(e.target.value)}
+                      placeholder="留空表示未翻译"
+                    />
+                    <div className="mt-2 text-sm text-muted-foreground">
+                      修改目标文案会进入 <span className="text-foreground">待审核</span>；修改源文案会将已有译文标记为 <span className="text-foreground">有更新</span>。
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="text-sm text-muted-foreground">
+                    当前选择为源语言；修改源文案会将已有译文标记为 <span className="text-foreground">有更新</span>。
+                  </div>
+                )}
+
+                {editError ? (
+                  <div className="rounded-md border border-destructive/30 bg-background px-3 py-2 text-sm text-destructive">
+                    {editError}
+                  </div>
+                ) : null}
               </div>
 
-              {downloadLocale !== mockProject.sourceLocale ? (
-                <div className="rounded-lg border bg-card p-4">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="text-sm text-muted-foreground">
-                      目标语言上传写入后将进入 <span className="text-foreground">待审核</span>；源语言更新会导致译文变为 <span className="text-foreground">有更新</span>。
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setEditOpen(false)}>
+                  取消
+                </Button>
+                <Button type="button" onClick={handleSaveEdit} disabled={!editKey}>
+                  保存
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+        </>
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-[1fr_420px]">
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">上传语言包（{localeLabel(selectedLocale)}）</CardTitle>
+                <CardDescription>仅支持扁平 key-value JSON；一份 JSON 对应一种语言。</CardDescription>
+                <CardAction>
+                  <Button
+                    type="button"
+                    onClick={handlePickFile}
+                    disabled={uploadBusy}
+                  >
+                    {uploadBusy ? <Loader2 className="animate-spin" /> : <Upload />}
+                    选择 JSON 文件
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="application/json,.json"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = '';
+                    void handleFileChange(file);
+                  }}
+                />
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="rounded-lg border bg-card p-4">
+                    <SectionTitle title="结构约束" desc="仅支持扁平 JSON，不支持嵌套对象。" />
+                    <pre className="mt-3 overflow-auto rounded-md border bg-background p-3 text-xs text-foreground">{
+`{
+  "common.save": "保存",
+  "auth.signIn": "登录"
+}`
+                    }</pre>
+                  </div>
+                  <div className="rounded-lg border bg-card p-4">
+                    <SectionTitle title="命名建议" desc="推荐使用点分隔、稳定语义、避免大小写混用。" />
+                    <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-between">
+                        <span className="text-foreground">✅ 推荐</span>
+                        <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">page.login.title</code>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-foreground">✅ 推荐</span>
+                        <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">common.save</code>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-foreground">⚠️ 避免</span>
+                        <code className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">SaveButtonText</code>
+                      </div>
                     </div>
-                    <Button asChild variant="outline" size="sm">
-                      <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(downloadLocale)}`}>前往翻译工作台</Link>
-                    </Button>
                   </div>
                 </div>
-              ) : null}
+
+                {uploadError ? (
+                  <div className="rounded-lg border border-destructive/30 bg-card p-4">
+                    <div className="text-sm font-semibold text-destructive">上传失败</div>
+                    <div className="mt-1 text-sm text-muted-foreground">{uploadError}</div>
+                  </div>
+                ) : null}
+
+                {latestRecord ? (
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">上传结果摘要</div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {formatDateTime(latestRecord.createdAt)} · {latestRecord.operator}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openDetails(latestRecord.id)}
+                        >
+                          <Eye />
+                          查看详情
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          asChild
+                        >
+                          <Link href="#upload-history">查看上传历史</Link>
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="rounded-md border bg-background px-3 py-2">
+                        <div className="text-xs text-muted-foreground">新增 key 数</div>
+                        <div className="mt-0.5 text-base font-semibold text-foreground">
+                          {latestRecord.summary.added}
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-background px-3 py-2">
+                        <div className="text-xs text-muted-foreground">更新 key 数</div>
+                        <div className="mt-0.5 text-base font-semibold text-foreground">
+                          {latestRecord.summary.updated}
+                        </div>
+                      </div>
+                      <div className="rounded-md border bg-background px-3 py-2">
+                        <div className="text-xs text-muted-foreground">删除 key 数</div>
+                        <div className="mt-0.5 text-base font-semibold text-foreground">
+                          {latestRecord.summary.missingInUpload}
+                          <span className="ml-2 text-xs font-normal text-muted-foreground">不自动删除</span>
+                        </div>
+                      </div>
+                      {latestRecord.locale === mockProject.sourceLocale ? (
+                        <>
+                          <div className="rounded-md border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">有更新 key 数</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">
+                              {latestRecord.summary.hasUpdate}
+                            </div>
+                          </div>
+                          <div className="rounded-md border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">待审核词条数</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">0</div>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="rounded-md border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">待审核词条数</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">
+                              {latestRecord.summary.pendingReview}
+                            </div>
+                          </div>
+                          <div className="rounded-md border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">被忽略 key 数</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">
+                              {latestRecord.summary.ignored}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">下载导出</CardTitle>
+                <CardDescription>选择语言并导出 JSON（前端生成下载文件）。</CardDescription>
+                <CardAction>
+                  <Button type="button" onClick={handleDownload}>
+                    <Download />
+                    下载 JSON
+                  </Button>
+                </CardAction>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <Label htmlFor="download-locale">导出语言</Label>
+                    <select
+                      id="download-locale"
+                      className={cn('mt-1', selectClassName())}
+                      value={downloadLocale}
+                      onChange={(e) => setDownloadLocale(e.target.value)}
+                    >
+                      {allLocales.map((l) => (
+                        <option key={l} value={l}>
+                          {localeLabel(l)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <Label>导出选项（MVP）</Label>
+                    <div className="mt-1 rounded-md border bg-background p-3">
+                      <RadioGroup
+                        value={downloadMode}
+                        onValueChange={(v) => setDownloadMode(v as DownloadMode)}
+                        className="grid gap-2"
+                      >
+                        <label className="flex items-start gap-2">
+                          <RadioGroupItem value="fallback" />
+                          <div>
+                            <div className="text-sm text-foreground">未翻译回退源语言（默认）</div>
+                            <div className="text-sm text-muted-foreground">便于联调与避免空文本</div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-2">
+                          <RadioGroupItem value="empty" />
+                          <div>
+                            <div className="text-sm text-foreground">未翻译导出空字符串</div>
+                            <div className="text-sm text-muted-foreground">便于定位缺失翻译</div>
+                          </div>
+                        </label>
+                        <label className="flex items-start gap-2">
+                          <RadioGroupItem value="filled" />
+                          <div>
+                            <div className="text-sm text-foreground">仅导出已填写</div>
+                            <div className="text-sm text-muted-foreground">仅包含有目标文案的 key</div>
+                          </div>
+                        </label>
+                      </RadioGroup>
+                    </div>
+                  </div>
+                </div>
+
+                {downloadLocale !== mockProject.sourceLocale ? (
+                  <div className="rounded-lg border bg-card p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-sm text-muted-foreground">
+                        目标语言上传写入后将进入 <span className="text-foreground">待审核</span>；源语言更新会导致译文变为 <span className="text-foreground">有更新</span>。
+                      </div>
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(downloadLocale)}`}>前往翻译工作台</Link>
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card id="upload-history">
+            <CardHeader>
+              <CardTitle className="text-base">上传历史</CardTitle>
+              <CardDescription>时间、语言、操作者与摘要；点击可查看详情。</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {history.length === 0 ? (
+                <div className="rounded-lg border bg-background p-6">
+                  <div className="text-sm font-semibold text-foreground">暂无上传记录</div>
+                  <div className="mt-1 text-sm text-muted-foreground">上传一次语言包后，会在这里生成可回溯记录。</div>
+                </div>
+              ) : (
+                <div className="overflow-auto rounded-md border">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b bg-card">
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">时间</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">语言</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">操作者</th>
+                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">摘要</th>
+                        <th className="px-3 py-2 text-right font-medium text-muted-foreground">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map((r) => (
+                        <tr key={r.id} className="border-b last:border-b-0">
+                          <td className="px-3 py-2 align-top text-foreground">{formatDateTime(r.createdAt)}</td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="flex items-center gap-2">
+                              <span className="text-foreground">{r.locale}</span>
+                              {r.locale === mockProject.sourceLocale ? (
+                                <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">源</span>
+                              ) : null}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top text-foreground">{r.operator}</td>
+                          <td className="px-3 py-2 align-top">
+                            <div className="flex flex-wrap gap-2">
+                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">新增 {r.summary.added}</span>
+                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">更新 {r.summary.updated}</span>
+                              {r.locale === mockProject.sourceLocale ? (
+                                <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">有更新 {r.summary.hasUpdate}</span>
+                              ) : (
+                                <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">待审核 {r.summary.pendingReview}</span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 align-top text-right">
+                            <Button type="button" variant="outline" size="sm" onClick={() => openDetails(r.id)}>
+                              查看
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle className="text-lg">上传记录详情</DialogTitle>
+                    <DialogDescription>
+                      {detailRecord
+                        ? `${formatDateTime(detailRecord.createdAt)} · ${detailRecord.locale} · ${detailRecord.operator}`
+                        : '—'}
+                    </DialogDescription>
+                  </DialogHeader>
+
+                  {detailRecord ? (
+                    <div className="grid gap-4">
+                      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                        <div className="rounded-lg border bg-background px-3 py-2">
+                          <div className="text-xs text-muted-foreground">新增 key</div>
+                          <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.added}</div>
+                        </div>
+                        <div className="rounded-lg border bg-background px-3 py-2">
+                          <div className="text-xs text-muted-foreground">更新 key</div>
+                          <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.updated}</div>
+                        </div>
+                        {detailRecord.locale === mockProject.sourceLocale ? (
+                          <div className="rounded-lg border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">有更新</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.hasUpdate}</div>
+                          </div>
+                        ) : (
+                          <div className="rounded-lg border bg-background px-3 py-2">
+                            <div className="text-xs text-muted-foreground">待审核</div>
+                            <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.pendingReview}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid gap-4 lg:grid-cols-2">
+                        <div className="rounded-lg border bg-card p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-foreground">新增词条</div>
+                            <span className="text-xs text-muted-foreground">{detailRecord.addedKeys.length} 条</span>
+                          </div>
+                          {detailRecord.addedKeys.length === 0 ? (
+                            <div className="mt-2 text-sm text-muted-foreground">本次无新增。</div>
+                          ) : (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {detailRecord.addedKeys.slice(0, 30).map((k) => (
+                                <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                                  {k}
+                                </code>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="rounded-lg border bg-card p-4">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-foreground">更新差异</div>
+                            <span className="text-xs text-muted-foreground">{detailRecord.updatedKeys.length} 条</span>
+                          </div>
+                          {detailRecord.updatedKeys.length === 0 ? (
+                            <div className="mt-2 text-sm text-muted-foreground">本次无更新。</div>
+                          ) : (
+                            <div className="mt-3 overflow-auto rounded-md border">
+                              <table className="w-full text-sm">
+                                <thead>
+                                  <tr className="border-b bg-background">
+                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Key</th>
+                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">之前</th>
+                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">之后</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {detailRecord.updatedKeys.slice(0, 20).map((it) => (
+                                    <tr key={it.key} className="border-b last:border-b-0">
+                                      <td className="px-3 py-2 align-top">
+                                        <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{it.key}</code>
+                                      </td>
+                                      <td className="px-3 py-2 align-top text-foreground">{it.before || '—'}</td>
+                                      <td className="px-3 py-2 align-top text-foreground">{it.after || '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {detailRecord.locale !== mockProject.sourceLocale ? (
+                        <div className="rounded-lg border bg-card p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">待审核列表</div>
+                              <div className="mt-1 text-sm text-muted-foreground">目标语言上传导入/覆盖的译文会统一进入待审核。</div>
+                            </div>
+                            <Button asChild variant="outline" size="sm">
+                              <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(detailRecord.locale)}&status=pending_review`}>
+                                跳转到翻译工作台
+                              </Link>
+                            </Button>
+                          </div>
+                          {detailRecord.pendingReviewKeys.length === 0 ? (
+                            <div className="mt-3 text-sm text-muted-foreground">本次无待审核。</div>
+                          ) : (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {detailRecord.pendingReviewKeys.slice(0, 30).map((k) => (
+                                <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                                  {k}
+                                </code>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border bg-card p-4">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-foreground">有更新列表</div>
+                              <div className="mt-1 text-sm text-muted-foreground">源文案更新会使已存在译文标记为有更新。</div>
+                            </div>
+                            <Button asChild variant="outline" size="sm">
+                              <Link href={`/projects/${projectId}/workbench?status=has_update`}>
+                                跳转到翻译工作台
+                              </Link>
+                            </Button>
+                          </div>
+                          {detailRecord.hasUpdateKeys.length === 0 ? (
+                            <div className="mt-3 text-sm text-muted-foreground">本次无有更新。</div>
+                          ) : (
+                            <div className="mt-3 flex flex-wrap gap-2">
+                              {detailRecord.hasUpdateKeys.slice(0, 30).map((k) => (
+                                <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                                  {k}
+                                </code>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {detailRecord.ignoredKeys.length > 0 ? (
+                        <div className="rounded-lg border border-warning/40 bg-card p-4">
+                          <div className="text-sm font-semibold text-foreground">被忽略的 key</div>
+                          <div className="mt-1 text-sm text-muted-foreground">目标语言上传不允许新增 key；源语言不存在的 key 会被忽略。</div>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {detailRecord.ignoredKeys.slice(0, 30).map((k) => (
+                              <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
+                                {k}
+                              </code>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">未找到该记录。</div>
+                  )}
+
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>
+                      关闭
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
             </CardContent>
           </Card>
         </div>
-
-        <Card id="upload-history">
-          <CardHeader>
-            <CardTitle className="text-base">上传历史</CardTitle>
-            <CardDescription>时间、语言、操作者与摘要；点击可查看详情。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {history.length === 0 ? (
-              <div className="rounded-lg border bg-background p-6">
-                <div className="text-sm font-semibold text-foreground">暂无上传记录</div>
-                <div className="mt-1 text-sm text-muted-foreground">上传一次语言包后，会在这里生成可回溯记录。</div>
-              </div>
-            ) : (
-              <div className="overflow-auto rounded-md border">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b bg-card">
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">时间</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">语言</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">操作者</th>
-                      <th className="px-3 py-2 text-left font-medium text-muted-foreground">摘要</th>
-                      <th className="px-3 py-2 text-right font-medium text-muted-foreground">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((r) => (
-                      <tr key={r.id} className="border-b last:border-b-0">
-                        <td className="px-3 py-2 align-top text-foreground">{formatDateTime(r.createdAt)}</td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="flex items-center gap-2">
-                            <span className="text-foreground">{r.locale}</span>
-                            {r.locale === mockProject.sourceLocale ? (
-                              <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">源</span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top text-foreground">{r.operator}</td>
-                        <td className="px-3 py-2 align-top">
-                          <div className="flex flex-wrap gap-2">
-                            <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">新增 {r.summary.added}</span>
-                            <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">更新 {r.summary.updated}</span>
-                            {r.locale === mockProject.sourceLocale ? (
-                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">有更新 {r.summary.hasUpdate}</span>
-                            ) : (
-                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">待审核 {r.summary.pendingReview}</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top text-right">
-                          <Button type="button" variant="outline" size="sm" onClick={() => openDetails(r.id)}>
-                            查看
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-
-            <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-              <DialogContent className="max-w-3xl">
-                <DialogHeader>
-                  <DialogTitle className="text-lg">上传记录详情</DialogTitle>
-                  <DialogDescription>
-                    {detailRecord
-                      ? `${formatDateTime(detailRecord.createdAt)} · ${detailRecord.locale} · ${detailRecord.operator}`
-                      : '—'}
-                  </DialogDescription>
-                </DialogHeader>
-
-                {detailRecord ? (
-                  <div className="grid gap-4">
-                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                      <div className="rounded-lg border bg-background px-3 py-2">
-                        <div className="text-xs text-muted-foreground">新增 key</div>
-                        <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.added}</div>
-                      </div>
-                      <div className="rounded-lg border bg-background px-3 py-2">
-                        <div className="text-xs text-muted-foreground">更新 key</div>
-                        <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.updated}</div>
-                      </div>
-                      {detailRecord.locale === mockProject.sourceLocale ? (
-                        <div className="rounded-lg border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">有更新</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.hasUpdate}</div>
-                        </div>
-                      ) : (
-                        <div className="rounded-lg border bg-background px-3 py-2">
-                          <div className="text-xs text-muted-foreground">待审核</div>
-                          <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.pendingReview}</div>
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      <div className="rounded-lg border bg-card p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-foreground">新增词条</div>
-                          <span className="text-xs text-muted-foreground">{detailRecord.addedKeys.length} 条</span>
-                        </div>
-                        {detailRecord.addedKeys.length === 0 ? (
-                          <div className="mt-2 text-sm text-muted-foreground">本次无新增。</div>
-                        ) : (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {detailRecord.addedKeys.slice(0, 30).map((k) => (
-                              <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
-                                {k}
-                              </code>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="rounded-lg border bg-card p-4">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm font-semibold text-foreground">更新差异</div>
-                          <span className="text-xs text-muted-foreground">{detailRecord.updatedKeys.length} 条</span>
-                        </div>
-                        {detailRecord.updatedKeys.length === 0 ? (
-                          <div className="mt-2 text-sm text-muted-foreground">本次无更新。</div>
-                        ) : (
-                          <div className="mt-3 overflow-auto rounded-md border">
-                            <table className="w-full text-sm">
-                              <thead>
-                                <tr className="border-b bg-background">
-                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">Key</th>
-                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">之前</th>
-                                  <th className="px-3 py-2 text-left font-medium text-muted-foreground">之后</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {detailRecord.updatedKeys.slice(0, 20).map((it) => (
-                                  <tr key={it.key} className="border-b last:border-b-0">
-                                    <td className="px-3 py-2 align-top">
-                                      <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{it.key}</code>
-                                    </td>
-                                    <td className="px-3 py-2 align-top text-foreground">{it.before || '—'}</td>
-                                    <td className="px-3 py-2 align-top text-foreground">{it.after || '—'}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    {detailRecord.locale !== mockProject.sourceLocale ? (
-                      <div className="rounded-lg border bg-card p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">待审核列表</div>
-                            <div className="mt-1 text-sm text-muted-foreground">目标语言上传导入/覆盖的译文会统一进入待审核。</div>
-                          </div>
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(detailRecord.locale)}&status=pending_review`}>
-                              跳转到翻译工作台
-                            </Link>
-                          </Button>
-                        </div>
-                        {detailRecord.pendingReviewKeys.length === 0 ? (
-                          <div className="mt-3 text-sm text-muted-foreground">本次无待审核。</div>
-                        ) : (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {detailRecord.pendingReviewKeys.slice(0, 30).map((k) => (
-                              <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
-                                {k}
-                              </code>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border bg-card p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">有更新列表</div>
-                            <div className="mt-1 text-sm text-muted-foreground">源文案更新会使已存在译文标记为有更新。</div>
-                          </div>
-                          <Button asChild variant="outline" size="sm">
-                            <Link href={`/projects/${projectId}/workbench?status=has_update`}>
-                              跳转到翻译工作台
-                            </Link>
-                          </Button>
-                        </div>
-                        {detailRecord.hasUpdateKeys.length === 0 ? (
-                          <div className="mt-3 text-sm text-muted-foreground">本次无有更新。</div>
-                        ) : (
-                          <div className="mt-3 flex flex-wrap gap-2">
-                            {detailRecord.hasUpdateKeys.slice(0, 30).map((k) => (
-                              <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
-                                {k}
-                              </code>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {detailRecord.ignoredKeys.length > 0 ? (
-                      <div className="rounded-lg border border-warning/40 bg-card p-4">
-                        <div className="text-sm font-semibold text-foreground">被忽略的 key</div>
-                        <div className="mt-1 text-sm text-muted-foreground">目标语言上传不允许新增 key；源语言不存在的 key 会被忽略。</div>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          {detailRecord.ignoredKeys.slice(0, 30).map((k) => (
-                            <code key={k} className="rounded-md border bg-background px-2 py-1 text-xs text-foreground">
-                              {k}
-                            </code>
-                          ))}
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-lg border bg-card p-6 text-sm text-muted-foreground">未找到该记录。</div>
-                )}
-
-                <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setDetailOpen(false)}>
-                    关闭
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-          </CardContent>
-        </Card>
-      </div>
+      )}
     </div>
   );
 }
-

@@ -22,7 +22,7 @@ export default async function ProjectPackagesPage({
         </div>
       </div>
 
-      <ProjectPackagesClient projectId={id} />
+      <ProjectPackagesClient projectId={id} variant="entries" />
     </div>
   );
 }

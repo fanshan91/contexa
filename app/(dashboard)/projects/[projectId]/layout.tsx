@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { prisma } from '@/lib/db/prisma';
 import { requireUser } from '@/lib/auth/guards';
-import { ProjectSidebar } from './project-sidebar';
+import { ProjectShell } from './project-shell';
 
 export default async function ProjectLayout({
   children,
@@ -21,7 +21,7 @@ export default async function ProjectLayout({
 
   if (!Number.isFinite(id)) {
     return (
-      <div className="min-h-[calc(100dvh-68px)] bg-muted/30 px-4 py-6 lg:px-6">
+      <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>
@@ -49,7 +49,7 @@ export default async function ProjectLayout({
 
   if (!user.isSystemAdmin && !member) {
     return (
-      <div className="min-h-[calc(100dvh-68px)] bg-muted/30 px-4 py-6 lg:px-6">
+      <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>
@@ -74,7 +74,7 @@ export default async function ProjectLayout({
 
   if (!project) {
     return (
-      <div className="min-h-[calc(100dvh-68px)] bg-muted/30 px-4 py-6 lg:px-6">
+      <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
         <Card>
           <CardHeader>
@@ -93,13 +93,8 @@ export default async function ProjectLayout({
   }
 
   return (
-    <div className="flex min-h-[calc(100dvh-68px)] w-full flex-col bg-muted/30">
-      <div className="flex flex-1 overflow-hidden h-full">
-        <ProjectSidebar projectId={project.id} projectName={project.name} />
-        <main className="flex-1 overflow-y-auto px-4 py-4 lg:px-6 lg:py-6">
-          <div className="mx-auto w-full max-w-[1400px]">{children}</div>
-        </main>
-      </div>
-    </div>
+    <ProjectShell projectId={project.id} projectName={project.name}>
+      {children}
+    </ProjectShell>
   );
 }

@@ -88,6 +88,7 @@
     "backToProjects": "Back to projects"
   },
   "projectNav": {
+    "overview": "Overview",
     "packages": "Language Packs",
     "glossary": "Glossary",
     "workbench": "Workbench",
@@ -96,9 +97,20 @@
     "mobileTitle": "Project: {projectName}",
     "toggleSidebar": "Toggle sidebar"
   },
+  "projectOverview": {
+    "title": "Overview",
+    "subtitle": "Review key project info, and manage import/export plus upload history here.",
+    "projectInfoTitle": "Project Info",
+    "projectInfoSubtitle": "Quick view of locale setup and entry scale; manage details in Project Settings.",
+    "projectName": "Project name",
+    "sourceLocale": "Source locale",
+    "targetLocales": "Target locales",
+    "entryCount": "Entries",
+    "description": "Description"
+  },
   "projectPackages": {
     "title": "Language Packs",
-    "subtitle": "Manage entry pool, import/export, and pack structure (MVP in progress)",
+    "subtitle": "Focus on the entry pool: browse, create, and edit. Import/export and history moved to Overview.",
     "emptyTargetLocalesTitle": "Add target locales first",
     "emptyTargetLocalesDesc": "Target locales are required for translation and export. Configure them in project settings.",
     "goToSettings": "Open settings",

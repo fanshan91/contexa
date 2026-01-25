@@ -11,5 +11,5 @@ export default async function ProjectPage({
     return null;
   }
 
-  redirect(`/projects/${id}/packages`);
+  redirect(`/projects/${id}/overview`);
 }

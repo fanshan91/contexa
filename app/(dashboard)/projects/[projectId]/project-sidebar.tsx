@@ -1,10 +1,10 @@
 'use client';
 
-import { Suspense, useMemo, useState } from 'react';
+import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { BookOpen, Languages, LayoutTemplate, Menu, Settings } from 'lucide-react';
+import { BookOpen, Languages, LayoutDashboard, LayoutTemplate, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type NavItem = {
@@ -48,16 +48,24 @@ function ProjectSidebarNav({
 
 export function ProjectSidebar({
   projectId,
-  projectName
+  projectName,
+  isSidebarOpen,
+  onSidebarOpenChange
 }: {
   projectId: number;
   projectName: string;
+  isSidebarOpen: boolean;
+  onSidebarOpenChange: (open: boolean) => void;
 }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const t = useTranslations('projectNav');
 
   const navItems = useMemo<NavItem[]>(
     () => [
+      {
+        href: `/projects/${projectId}/overview`,
+        icon: LayoutDashboard,
+        label: t('overview')
+      },
       {
         href: `/projects/${projectId}/packages`,
         icon: Languages,
@@ -88,42 +96,26 @@ export function ProjectSidebar({
   );
 
   return (
-    <>
-      <div className="lg:hidden flex items-center justify-between bg-background border-b border-border px-4 py-3">
-        <div className="flex items-center">
-          <span className="text-sm font-medium">{t('mobileTitle', { projectName })}</span>
-        </div>
-        <Button
-          className="-mr-3"
-          variant="ghost"
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-        >
-          <Menu className="h-6 w-6" />
-          <span className="sr-only">{t('toggleSidebar')}</span>
-        </Button>
-      </div>
-
-      <aside
-        className={`w-64 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border/12 lg:block ${
-          isSidebarOpen ? 'block' : 'hidden'
-        } lg:relative absolute inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
-          isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <nav className="h-full overflow-y-auto p-3">
-          <div className="hidden lg:block px-3 py-2">
-            <div className="truncate text-sm font-semibold text-sidebar-muted-foreground">
-              {projectName}
-            </div>
+    <aside
+      className={`w-64 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border/12 lg:block ${
+        isSidebarOpen ? 'block' : 'hidden'
+      } lg:relative absolute inset-y-0 left-0 z-40 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        isSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+      }`}
+    >
+      <nav className="h-full overflow-y-auto p-3">
+        <div className="hidden lg:block px-3 py-2">
+          <div className="truncate text-sm font-semibold text-sidebar-muted-foreground">
+            {projectName}
           </div>
-          <Suspense fallback={null}>
-            <ProjectSidebarNav
-              navItems={navItems}
-              onNavigate={() => setIsSidebarOpen(false)}
-            />
-          </Suspense>
-        </nav>
-      </aside>
-    </>
+        </div>
+        <Suspense fallback={null}>
+          <ProjectSidebarNav
+            navItems={navItems}
+            onNavigate={() => onSidebarOpenChange(false)}
+          />
+        </Suspense>
+      </nav>
+    </aside>
   );
 }

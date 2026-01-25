@@ -69,7 +69,7 @@ export default function DashboardLayout({
   );
 
   return (
-    <div className="flex min-h-[calc(100dvh-68px)] w-full flex-col bg-muted/30">
+    <div className="flex h-[calc(100dvh-68px)] w-full flex-col overflow-hidden bg-muted/30">
       {/* Mobile header */}
       <div className="lg:hidden flex items-center justify-between bg-background border-b border-border px-4 py-3">
         <div className="flex items-center">
@@ -85,7 +85,7 @@ export default function DashboardLayout({
         </Button>
       </div>
 
-      <div className="flex flex-1 overflow-hidden h-full">
+      <div className="relative flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside
           className={`w-64 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border/12 lg:block ${

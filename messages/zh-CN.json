@@ -88,6 +88,7 @@
     "backToProjects": "返回项目列表"
   },
   "projectNav": {
+    "overview": "项目概览",
     "packages": "语言包管理",
     "glossary": "术语库",
     "workbench": "翻译工作台",
@@ -96,9 +97,20 @@
     "mobileTitle": "项目：{projectName}",
     "toggleSidebar": "切换侧边栏"
   },
+  "projectOverview": {
+    "title": "项目概览",
+    "subtitle": "查看项目关键信息，并在此完成语言包导入导出与上传历史回溯。",
+    "projectInfoTitle": "项目信息",
+    "projectInfoSubtitle": "用于快速确认语言配置与词条规模；详细设置在项目设置中维护。",
+    "projectName": "项目名",
+    "sourceLocale": "源语言",
+    "targetLocales": "目标语言",
+    "entryCount": "词条数量",
+    "description": "描述"
+  },
   "projectPackages": {
     "title": "语言包管理",
-    "subtitle": "管理词条池、导入导出与语言包结构（MVP 逐步落地）",
+    "subtitle": "聚焦词条池：展示、新增与编辑；导入导出与历史已迁移到项目概览。",
     "emptyTargetLocalesTitle": "请先添加目标语言",
     "emptyTargetLocalesDesc": "目标语言用于后续翻译与导出；可在项目设置中配置。",
     "goToSettings": "前往项目设置",
