@@ -86,18 +86,9 @@ async function main() {
     create: {
       name: 'Demo Project',
       createdByUserId: admin.id,
-      sourceLocale: 'en-US',
+      sourceLocale: 'zh-CN',
       description: 'Seeded demo project',
       translationAdapter: 'tbd'
-    }
-  });
-
-  await prisma.projectLocale.upsert({
-    where: { projectId_locale: { projectId: project.id, locale: 'en-US' } },
-    update: {},
-    create: {
-      projectId: project.id,
-      locale: 'en-US'
     }
   });
 
@@ -107,6 +98,15 @@ async function main() {
     create: {
       projectId: project.id,
       locale: 'zh-CN'
+    }
+  });
+
+  await prisma.projectLocale.upsert({
+    where: { projectId_locale: { projectId: project.id, locale: 'en-US' } },
+    update: {},
+    create: {
+      projectId: project.id,
+      locale: 'en-US'
     }
   });
 
@@ -134,23 +134,23 @@ async function main() {
 
   const entry = await prisma.entry.upsert({
     where: { projectId_key: { projectId: project.id, key: 'auth.sign_in' } },
-    update: { sourceText: 'Sign in', sourceLocale: 'en-US' },
+    update: { sourceText: '登录', sourceLocale: 'zh-CN' },
     create: {
       projectId: project.id,
       key: 'auth.sign_in',
-      sourceText: 'Sign in',
-      sourceLocale: 'en-US'
+      sourceText: '登录',
+      sourceLocale: 'zh-CN'
     }
   });
 
   await prisma.translation.upsert({
-    where: { entryId_locale: { entryId: entry.id, locale: 'zh-CN' } },
-    update: { text: '登录', status: 'approved' },
+    where: { entryId_locale: { entryId: entry.id, locale: 'en-US' } },
+    update: { text: 'Sign in', status: 'approved' },
     create: {
       entryId: entry.id,
       projectId: project.id,
-      locale: 'zh-CN',
-      text: '登录',
+      locale: 'en-US',
+      text: 'Sign in',
       status: 'approved'
     }
   });

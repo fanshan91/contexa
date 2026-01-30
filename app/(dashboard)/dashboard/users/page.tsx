@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { requireUser } from '@/lib/auth/guards';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { prisma } from '@/lib/db/prisma';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { UserActionsMenu } from './user-actions-menu';
@@ -53,11 +53,10 @@ export default async function UsersPage() {
         </p>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('listTitle')}</CardTitle>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
+      <Card
+        title={<span className="text-base">{t('listTitle')}</span>}
+        contentClassName="overflow-x-auto"
+      >
           <table className="w-full text-sm">
             <thead className="text-left text-xs text-muted-foreground">
               <tr className="border-b border-border">
@@ -94,7 +93,6 @@ export default async function UsersPage() {
               ))}
             </tbody>
           </table>
-        </CardContent>
       </Card>
     </div>
   );

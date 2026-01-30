@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getTranslations } from 'next-intl/server';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { prisma } from '@/lib/db/prisma';
 import { requireUser } from '@/lib/auth/guards';
@@ -34,17 +34,15 @@ export default async function ProjectSettingsPersonalizationPage({
 
   if (targetLocales.length === 0) {
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('noTargetLocalesTitle')}</CardTitle>
-          <CardDescription>{t('noTargetLocalesDesc')}</CardDescription>
-          <CardAction>
-            <Button asChild>
-              <Link href={`/projects/${id}/settings/locales`}>{t('goToLocales')}</Link>
-            </Button>
-          </CardAction>
-        </CardHeader>
-      </Card>
+      <Card
+        title={<span className="text-base">{t('noTargetLocalesTitle')}</span>}
+        description={t('noTargetLocalesDesc')}
+        action={
+          <Button asChild>
+            <Link href={`/projects/${id}/settings/locales`}>{t('goToLocales')}</Link>
+          </Button>
+        }
+      />
     );
   }
 
@@ -61,18 +59,15 @@ export default async function ProjectSettingsPersonalizationPage({
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{t('cardTitle')}</CardTitle>
-        <CardDescription>{t('cardDesc')}</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ProjectSettingsPersonalizationForm
-          projectId={project.id}
-          targetLocales={targetLocales}
-          initialSelected={initialSelected}
-        />
-      </CardContent>
+    <Card
+      title={<span className="text-base">{t('cardTitle')}</span>}
+      description={t('cardDesc')}
+    >
+      <ProjectSettingsPersonalizationForm
+        projectId={project.id}
+        targetLocales={targetLocales}
+        initialSelected={initialSelected}
+      />
     </Card>
   );
 }

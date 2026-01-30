@@ -26,19 +26,6 @@ export async function middleware(request: NextRequest) {
   const isPublicPath = publicPaths.some((p) => pathname === p);
   const requiresAuth = !isPublicPath;
 
-  const ua = request.headers.get('user-agent') || '';
-  const hasIPhone = /iPhone|iPod/i.test(ua);
-  const isAndroidPhone = /Android/i.test(ua) && /Mobile/i.test(ua);
-  const isIPad = /iPad/i.test(ua);
-  const isPhoneUA = (hasIPhone || isAndroidPhone) && !isIPad;
-
-  if (!isPublicPath && isPhoneUA) {
-    const url = request.nextUrl.clone();
-    url.pathname = '/unsupported-device';
-    url.search = '';
-    return NextResponse.redirect(url);
-  }
-
   if (requiresAuth && !sessionCookie) {
     return NextResponse.redirect(buildRedirectToSignInUrl(request));
   }

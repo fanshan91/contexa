@@ -11,6 +11,9 @@
     "accountPlaceholder": "Enter account",
     "passwordLabel": "Password",
     "passwordPlaceholder": "Enter password",
+    "passwordShow": "Show",
+    "passwordHide": "Hide",
+    "rememberMeLabel": "Remember me on this device",
     "forgotPasswordHint": "Forgot your password? Ask a system admin to reset it.",
     "submitLoading": "Loading...",
     "submitSignIn": "Sign in",
@@ -30,7 +33,8 @@
     "adminLimitReached": "Maximum of 5 system admins reached",
     "signInFailed": "Invalid account or password, please try again.",
     "onlySystemAdminCreateProject": "Only system admin can create projects",
-    "createProjectFailed": "Failed to create project, please check if name exists"
+    "createProjectFailed": "Failed to create project, please check if name exists",
+    "switchLocaleFailed": "Failed to switch language, please try again."
   },
   "validations": {
     "passwordMin": "Password must be at least 6 characters",
@@ -188,10 +192,39 @@
     "formConflictError": "Conflict: \"{source} → {target}\" already exists in this locale. Edit the existing term instead.",
     "goToEditConflict": "Edit existing",
     "deleteTitle": "Confirm deletion",
-    "deleteDesc": "Delete {count} terms (mock data only).",
+    "deleteDesc": "This will delete {count} records. This action cannot be undone.",
     "confirmDelete": "Delete",
     "selectAll": "Select all",
-    "selectOne": "Select"
+    "selectOne": "Select",
+    "tabTerms": "Terms",
+    "tabNegative": "Negative prompts",
+    "termTotal": "{count} total",
+    "negativeTotal": "{count} total",
+    "pagination": "Page {page} / {pageCount}",
+    "prev": "Previous",
+    "next": "Next",
+    "noPermission": "No permission",
+    "toastFetchFailed": "Failed to fetch data. Please try again later.",
+    "toastActionFailed": "Operation failed. Please try again later.",
+    "projectNotFound": "Project not found",
+    "databaseNotReady": "Database is not ready. Please run migrations first.",
+    "termNotFound": "Term not found",
+    "formConflictErrorSimple": "This source term already exists in the selected locale.",
+    "negativeCreate": "Add negative prompt",
+    "negativeCreateTitle": "Add negative prompt",
+    "negativeEditTitle": "Edit negative prompt",
+    "negativePhrase": "Phrase",
+    "negativeAlternative": "Alternative",
+    "negativePhrasePlaceholder": "e.g. cheap / low-end / unprofessional",
+    "negativeAlternativePlaceholder": "e.g. cost-effective",
+    "negativeColPhrase": "Phrase",
+    "negativeColAlternative": "Alternative",
+    "negativeRequiredError": "Please enter a phrase to avoid.",
+    "negativeConflictError": "This phrase already exists in the selected locale.",
+    "negativeNotFound": "Negative prompt not found",
+    "negativeToastCreated": "Negative prompt created.",
+    "negativeToastSaved": "Negative prompt saved.",
+    "negativeToastDeleted": "Negative prompt deleted."
   },
   "projectWorkbench": {
     "title": "Workbench",
@@ -335,13 +368,25 @@
       "untitledPage": "Untitled page",
       "noModules": "No modules under this page.",
       "keyCount": "{count} keys",
+      "meta": {
+        "keys": "Keys"
+      },
       "moduleTag": "Module"
+    },
+    "selector": {
+      "trigger": "Select page/module",
+      "title": "Select page/module",
+      "browse": "Tree",
+      "browseTitle": "Browse page/module tree",
+      "browseDesc": "Quickly browse and switch without changing other filters.",
+      "placeholder": "Search route / title / module name",
+      "empty": "No matching pages or modules."
     },
     "detail": {
       "title": "Details",
       "subtitle": "Selected page/module info and context",
       "noSelectionTitle": "Select a page or module",
-      "noSelectionDesc": "Choose a node from the tree to view and edit context.",
+      "noSelectionDesc": "Use the top selector or Browse tree to choose a node.",
       "pageTitle": "Page title",
       "route": "Route",
       "selectedNode": "Selected node",
@@ -365,11 +410,13 @@
       "module": "Module"
     },
     "description": {
-      "title": "Context Description",
-      "subtitle": "Used as prompt input for AI translation and review",
-      "save": "Save",
-      "placeholder": "Describe the page/module purpose, tone, terminology, and UI behavior…",
-      "hint": "Tip: Write in a way that stays valid across locales and text expansion."
+      "title": "Translation Context",
+      "subtitle": "Add background and writing rules to improve human and AI output",
+      "save": "Save context",
+      "expand": "Expand context",
+      "collapse": "Collapse context",
+      "placeholder": "e.g. purpose, audience, tone, terminology, placeholders/format rules, length limits…",
+      "hint": "Tip: Prefer rules that hold across locales (expansion, RTL, etc.)."
     },
     "entries": {
       "title": "Entry Bindings Preview",
@@ -439,10 +486,18 @@
       "moduleCreated": "Module created",
       "pageDeleted": "Page deleted",
       "moduleDeleted": "Module deleted",
-      "descriptionSaved": "Description saved",
+      "descriptionSaved": "Context saved",
       "bound": "Bound {count} entries",
       "unbound": "Unbound {count} entries",
-      "synced": "Sync applied"
+      "synced": "Sync applied",
+      "createFailed": "Create failed. Please try again.",
+      "updateFailed": "Update failed. Please try again.",
+      "deleteFailed": "Delete failed. Please try again.",
+      "fetchFailed": "Load failed. Please try again.",
+      "pageRouteExists": "Route already exists. Please use a different one.",
+      "projectNotFound": "Project not found or deleted.",
+      "pageNotFound": "Page not found or deleted.",
+      "databaseNotReady": "Database is not initialized or schema is out of date."
     },
     "placeholderTitle": "Context placeholder",
     "placeholderDesc": "Page/module tree editing will be implemented incrementally."
@@ -452,6 +507,9 @@
     "subtitle": "Manage locales, members, quality policy, and personalization for this project.",
     "noPermission": "Permission denied",
     "projectNotFound": "Project not found",
+    "deleteProjectNameMismatch": "Project name does not match",
+    "deleteProjectOnlyCreator": "Only the project creator can delete this project",
+    "deleteProjectFailed": "Failed to delete project, please try again.",
     "noValidLocales": "No valid locales to add",
     "invalidLocales": "Invalid locale selection",
     "preferencesMax3": "Select up to 3 target locales",
@@ -462,7 +520,9 @@
     "cannotRemoveCreator": "Cannot remove the project creator",
     "cannotRemoveLastAdmin": "Cannot remove the last project admin",
     "memberAlreadyExists": "User is already a project member",
-    "memberNotFound": "Member not found"
+    "memberNotFound": "Member not found",
+    "userNotFound": "User not found",
+    "cannotAddSystemAdmin": "Cannot add a system admin to the project"
   },
   "projectSettingsTabs": {
     "basic": "Basic",
@@ -479,7 +539,18 @@
     "projectDescriptionPlaceholder": "Used as project context",
     "sourceLocale": "Source locale",
     "save": "Save",
-    "saving": "Saving..."
+    "saving": "Saving...",
+    "cancel": "Cancel",
+    "dangerZoneTitle": "Danger zone",
+    "deleteProjectButton": "Delete project",
+    "deleteProjectDesc": "This action cannot be undone. It permanently deletes this project and all related data.",
+    "deleteProjectPermissionHint": "Only the project creator can delete this project.",
+    "deleteProjectDialogTitle": "Confirm project deletion",
+    "deleteProjectDialogDesc": "Type the project name to confirm deletion:",
+    "deleteProjectConfirmLabel": "Project name",
+    "deleteProjectConfirmPlaceholder": "Enter project name",
+    "deleteProjectConfirmButton": "I understand, delete this project",
+    "deleteProjectDeleting": "Deleting..."
   },
   "projectSettingsLocales": {
     "listTitle": "Locales",
@@ -488,21 +559,24 @@
     "noTargetLocales": "No target locales",
     "removePolicy": "Target locales cannot be removed by default.",
     "addTitle": "Add target locales",
-    "addLabel": "Target locales (comma/space separated)",
-    "addPlaceholder": "e.g. en-US, ja-JP, zh-TW",
+    "addLabel": "Target Locales",
+    "addPlaceholder": "Select locales to add",
     "addHelp": "Affects glossary, workbench, and export scope.",
     "add": "Add",
     "adding": "Adding..."
   },
   "projectRoles": {
     "admin": "Admin",
+    "internal": "Internal",
     "developer": "Developer",
     "translator": "Translator"
   },
   "projectSettingsMembers": {
     "readOnlyHint": "You can only view members in this project.",
     "addTitle": "Add member",
-    "addSubtitle": "Invite or add a member by email and assign a role.",
+    "addSubtitle": "Select an existing user and assign a role.",
+    "user": "User",
+    "userPlaceholder": "Select a user",
     "email": "Email",
     "emailPlaceholder": "Enter email",
     "role": "Role",

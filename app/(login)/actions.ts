@@ -1,7 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import type { User } from '@/lib/db/types';
 import { ActivityType } from '@/lib/db/types';
 import { comparePasswords, hashPassword, setSession } from '@/lib/auth/session';
 import { redirect } from 'next/navigation';
@@ -90,8 +89,10 @@ export const signIn = validatedAction(signInSchema, async (data, formData) => {
     };
   }
 
+  const rememberMe = formData.get('rememberMe') === 'on';
+
   await Promise.all([
-    setSession({ id: foundUser.id }),
+    setSession({ id: foundUser.id }, { rememberMe }),
     logActivity(foundTeam?.id, foundUser.id, ActivityType.SIGN_IN)
   ]);
 
@@ -230,9 +231,11 @@ export const signUp = validatedAction(signUpSchema, async (data, formData) => {
 });
 
 export async function signOut() {
-  const user = (await getUser()) as User;
-  const userWithTeam = await getUserWithTeam(user.id);
-  await logActivity(userWithTeam?.teamId, user.id, ActivityType.SIGN_OUT);
+  const user = await getUser();
+  if (user) {
+    const userWithTeam = await getUserWithTeam(user.id);
+    await logActivity(userWithTeam?.teamId, user.id, ActivityType.SIGN_OUT);
+  }
   (await cookies()).delete('session');
 }
 

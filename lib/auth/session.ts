@@ -5,6 +5,8 @@ import { env } from '@/lib/env';
 
 const key = new TextEncoder().encode(env.AUTH_SECRET);
 const SALT_ROUNDS = 10;
+const DEFAULT_SESSION_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+const EXTENDED_SESSION_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 export async function hashPassword(password: string) {
   return hash(password, SALT_ROUNDS);
@@ -22,11 +24,15 @@ export type SessionData = {
   expires: string;
 };
 
-export async function signToken(payload: SessionData) {
+export async function signToken(
+  payload: SessionData,
+  maxAgeMs: number = DEFAULT_SESSION_MAX_AGE_MS
+) {
+  const maxAgeSeconds = Math.floor(maxAgeMs / 1000);
   return await new SignJWT(payload)
     .setProtectedHeader({ alg: 'HS256' })
     .setIssuedAt()
-    .setExpirationTime('1 day from now')
+    .setExpirationTime(`${maxAgeSeconds} seconds from now`)
     .sign(key);
 }
 
@@ -43,16 +49,22 @@ export async function getSession() {
   return await verifyToken(session);
 }
 
-export async function setSession(user: { id: number }) {
-  const expiresInOneDay = new Date(Date.now() + 24 * 60 * 60 * 1000);
+export async function setSession(
+  user: { id: number },
+  options?: { rememberMe?: boolean }
+) {
+  const maxAgeMs = options?.rememberMe
+    ? EXTENDED_SESSION_MAX_AGE_MS
+    : DEFAULT_SESSION_MAX_AGE_MS;
+  const expiresAt = new Date(Date.now() + maxAgeMs);
   const session: SessionData = {
     user: { id: user.id },
-    expires: expiresInOneDay.toISOString(),
+    expires: expiresAt.toISOString(),
   };
-  const encryptedSession = await signToken(session);
+  const encryptedSession = await signToken(session, maxAgeMs);
   (await cookies()).set('session', encryptedSession, {
     path: '/',
-    expires: expiresInOneDay,
+    expires: expiresAt,
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',

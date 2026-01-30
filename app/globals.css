@@ -34,7 +34,7 @@
 
     --border: 226 232 240;                 /* #E2E8F0 */
     --input: 226 232 240;
-    --ring: 99 102 241;
+    --ring: 24 144 255;                 /* align with primary #1890FF */
 
     /* ========== Status Colors ========== */
     --success: 34 197 94;                  /* #22C55E */
@@ -57,41 +57,6 @@
 
     /* ========== Radius ========== */
     --radius: 0.5rem;
-  }
-
-  /* ---------------- Dark Mode ---------------- */
-  .dark {
-    --primary: 129 140 248;                /* #818CF8 */
-    --primary-foreground: 15 23 42;        /* #0F172A */
-
-    --background: 15 23 42;                /* #0F172A */
-    --card: 15 23 42;
-    --card-foreground: 248 250 252;        /* #F8FAFC */
-    --popover: 15 23 42;
-    --popover-foreground: 248 250 252;     /* #F8FAFC */
-
-    --foreground: 248 250 252;             /* #F8FAFC */
-    --muted-foreground: 148 163 184;
-
-    --secondary: 30 41 59;                 /* #1E293B */
-    --secondary-foreground: 248 250 252;
-
-    --muted: 30 41 59;
-    --accent: 34 46 68;
-    --accent-foreground: 248 250 252;
-
-    --border: 51 65 85;                    /* #334155 */
-    --input: 51 65 85;
-    --ring: 129 140 248;                   /* #818CF8 */
-
-    --sidebar: 6 36 64;
-    --sidebar-foreground: 255 255 255;
-    --sidebar-muted-foreground: 219 234 254;
-    --sidebar-accent: 255 255 255;
-    --sidebar-accent-foreground: 255 255 255;
-    --sidebar-border: 255 255 255;
-
-    --overlay: 0 0 0;
   }
 }
 

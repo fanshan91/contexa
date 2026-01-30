@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { requireUser } from '@/lib/auth/guards';
 import { getTranslations } from 'next-intl/server';
@@ -35,13 +35,8 @@ export default async function PlatformApiConfigPage() {
           <div className="text-sm text-muted-foreground">
             {enhancedStatus.connected ? t('connectedHint') : t('disconnectedHint')}
           </div>
-          <Card>
-            <CardHeader>
-              <CardTitle>{t('formTitle')}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PlatformApiConfigForm />
-            </CardContent>
+          <Card title={t('formTitle')}>
+            <PlatformApiConfigForm />
           </Card>
         </div>
       )}

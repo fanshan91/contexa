@@ -11,6 +11,9 @@
     "accountPlaceholder": "请输入账号",
     "passwordLabel": "密码",
     "passwordPlaceholder": "请输入密码",
+    "passwordShow": "显示",
+    "passwordHide": "隐藏",
+    "rememberMeLabel": "记住密码",
     "forgotPasswordHint": "忘记密码？请联系系统管理员重置密码",
     "submitLoading": "加载中...",
     "submitSignIn": "登录",
@@ -30,7 +33,8 @@
     "adminLimitReached": "已达到最多 5 个系统管理员的提升上限",
     "signInFailed": "账号或密码不正确，请重试。",
     "onlySystemAdminCreateProject": "仅系统管理员可创建项目",
-    "createProjectFailed": "创建项目失败，请检查项目名是否已存在"
+    "createProjectFailed": "创建项目失败，请检查项目名是否已存在",
+    "switchLocaleFailed": "切换语言失败，请稍后重试。"
   },
   "validations": {
     "passwordMin": "密码至少 6 位",
@@ -188,10 +192,39 @@
     "formConflictError": "检测到冲突：同一目标语言下已存在「{source} → {target}」，请改为编辑已有术语。",
     "goToEditConflict": "去编辑已有术语",
     "deleteTitle": "确认删除",
-    "deleteDesc": "将删除 {count} 条术语（仅前端 mock 数据）。",
+    "deleteDesc": "将删除 {count} 条记录，此操作不可撤销。",
     "confirmDelete": "确认删除",
     "selectAll": "全选",
-    "selectOne": "选择"
+    "selectOne": "选择",
+    "tabTerms": "术语",
+    "tabNegative": "负面提示词",
+    "termTotal": "共 {count} 条",
+    "negativeTotal": "共 {count} 条",
+    "pagination": "第 {page} / {pageCount} 页",
+    "prev": "上一页",
+    "next": "下一页",
+    "noPermission": "无权限",
+    "toastFetchFailed": "获取数据失败，请稍后重试。",
+    "toastActionFailed": "操作失败，请稍后重试。",
+    "projectNotFound": "项目不存在",
+    "databaseNotReady": "数据库未就绪，请先执行迁移。",
+    "termNotFound": "术语不存在或已被删除",
+    "formConflictErrorSimple": "该源术语在当前目标语言下已存在",
+    "negativeCreate": "新增负面提示词",
+    "negativeCreateTitle": "新增负面提示词",
+    "negativeEditTitle": "编辑负面提示词",
+    "negativePhrase": "短语",
+    "negativeAlternative": "替代表达",
+    "negativePhrasePlaceholder": "例如：cheap / 简陋 / 不专业",
+    "negativeAlternativePlaceholder": "例如：cost-effective / 经济实惠",
+    "negativeColPhrase": "短语",
+    "negativeColAlternative": "替代表达",
+    "negativeRequiredError": "请填写需要避免的短语。",
+    "negativeConflictError": "该短语在当前目标语言下已存在",
+    "negativeNotFound": "负面提示词不存在或已被删除",
+    "negativeToastCreated": "负面提示词已创建。",
+    "negativeToastSaved": "负面提示词已保存。",
+    "negativeToastDeleted": "负面提示词已删除。"
   },
   "projectWorkbench": {
     "title": "翻译工作台",
@@ -335,13 +368,25 @@
       "untitledPage": "未命名页面",
       "noModules": "该页面下暂无模块。",
       "keyCount": "{count} 个 key",
+      "meta": {
+        "keys": "Keys"
+      },
       "moduleTag": "模块"
+    },
+    "selector": {
+      "trigger": "选择页面/模块",
+      "title": "选择页面/模块",
+      "browse": "结构导航",
+      "browseTitle": "浏览页面/模块结构",
+      "browseDesc": "用于快速浏览与切换；不影响当前筛选与编辑。",
+      "placeholder": "搜索路由/标题/模块名称",
+      "empty": "未找到匹配的页面或模块。"
     },
     "detail": {
       "title": "页面详情",
       "subtitle": "查看当前选中页面/模块的上下文与同步信息",
       "noSelectionTitle": "请选择一个页面或模块",
-      "noSelectionDesc": "从左侧树结构中选择节点后，才能查看与编辑上下文。",
+      "noSelectionDesc": "从顶部选择器或“浏览结构”中选择节点后，才能查看与编辑上下文。",
       "pageTitle": "页面标题",
       "route": "路由",
       "selectedNode": "当前选中节点",
@@ -365,11 +410,13 @@
       "module": "模块"
     },
     "description": {
-      "title": "上下文说明",
-      "subtitle": "用于提升语境，作为页面翻译与 AI 生成提示的重要输入",
-      "save": "保存",
-      "placeholder": "描述该页面/模块的目的、语气、术语偏好与交互规则…",
-      "hint": "建议：描述应对不同语言的文本长度变化依然成立。"
+      "title": "翻译语境",
+      "subtitle": "补充页面/模块背景与写作规则，帮助译者与 AI 输出更准确",
+      "save": "保存语境",
+      "expand": "展开语境",
+      "collapse": "收起语境",
+      "placeholder": "例如：业务目的、用户角色、语气风格、术语约定、占位符/格式规则、长度限制等…",
+      "hint": "建议：尽量写成对多语言都成立的规则（含德语扩展、RTL 等场景）。"
     },
     "entries": {
       "title": "词条关系预览",
@@ -439,10 +486,18 @@
       "moduleCreated": "已创建模块",
       "pageDeleted": "已删除页面",
       "moduleDeleted": "已删除模块",
-      "descriptionSaved": "已保存描述",
+      "descriptionSaved": "已保存语境",
       "bound": "已绑定 {count} 个词条",
       "unbound": "已解除 {count} 个词条",
-      "synced": "已应用同步变更"
+      "synced": "已应用同步变更",
+      "createFailed": "创建失败，请重试。",
+      "updateFailed": "更新失败，请重试。",
+      "deleteFailed": "删除失败，请重试。",
+      "fetchFailed": "加载失败，请重试。",
+      "pageRouteExists": "该路由已存在，请修改后重试。",
+      "projectNotFound": "项目不存在或已被删除。",
+      "pageNotFound": "页面不存在或已被删除。",
+      "databaseNotReady": "数据库未初始化或结构不一致，请完成迁移/初始化后重试。"
     },
     "placeholderTitle": "页面/模块占位页",
     "placeholderDesc": "后续将按原型落地两层树结构维护与描述字段。"
@@ -452,6 +507,9 @@
     "subtitle": "集中管理当前项目的语言、成员、质量策略与个性化。",
     "noPermission": "无权限",
     "projectNotFound": "项目不存在",
+    "deleteProjectNameMismatch": "项目名不匹配",
+    "deleteProjectOnlyCreator": "仅项目创建者可删除项目",
+    "deleteProjectFailed": "删除失败，请重试。",
     "noValidLocales": "没有可添加的语言",
     "invalidLocales": "语言选择不合法",
     "preferencesMax3": "最多选择 3 个目标语言",
@@ -462,7 +520,9 @@
     "cannotRemoveCreator": "无法移除项目创建人",
     "cannotRemoveLastAdmin": "无法移除最后一个项目管理员",
     "memberAlreadyExists": "该用户已是项目成员",
-    "memberNotFound": "成员不存在"
+    "memberNotFound": "成员不存在",
+    "userNotFound": "用户不存在",
+    "cannotAddSystemAdmin": "不可将系统管理员加入项目"
   },
   "projectSettingsTabs": {
     "basic": "基本设置",
@@ -479,7 +539,18 @@
     "projectDescriptionPlaceholder": "用于项目语境说明",
     "sourceLocale": "源语言",
     "save": "保存",
-    "saving": "保存中..."
+    "saving": "保存中...",
+    "cancel": "取消",
+    "dangerZoneTitle": "危险区域",
+    "deleteProjectButton": "删除项目",
+    "deleteProjectDesc": "此操作不可恢复，将永久删除该项目及其所有数据。",
+    "deleteProjectPermissionHint": "仅项目创建者可删除项目。",
+    "deleteProjectDialogTitle": "确认删除项目",
+    "deleteProjectDialogDesc": "请输入项目名以确认删除：",
+    "deleteProjectConfirmLabel": "项目名",
+    "deleteProjectConfirmPlaceholder": "请输入项目名",
+    "deleteProjectConfirmButton": "我已知晓，删除项目",
+    "deleteProjectDeleting": "删除中..."
   },
   "projectSettingsLocales": {
     "listTitle": "语言配置",
@@ -488,21 +559,24 @@
     "noTargetLocales": "暂无目标语言",
     "removePolicy": "目标语言默认不可移除。",
     "addTitle": "添加目标语言",
-    "addLabel": "目标语言（多个可用逗号或空格分隔）",
-    "addPlaceholder": "例如 en-US, ja-JP, zh-TW",
+    "addLabel": "目标语言",
+    "addPlaceholder": "请选择要添加的语言",
     "addHelp": "添加后会影响术语库、工作台与导出等能力范围。",
     "add": "添加",
     "adding": "添加中..."
   },
   "projectRoles": {
     "admin": "管理员",
+    "internal": "内部人员",
     "developer": "开发人员",
     "translator": "翻译人员"
   },
   "projectSettingsMembers": {
     "readOnlyHint": "你当前仅可查看成员信息。",
     "addTitle": "添加成员",
-    "addSubtitle": "通过邮箱邀请或加入成员，并分配项目内角色。",
+    "addSubtitle": "从系统用户中选择成员加入，并分配项目内角色。",
+    "user": "用户",
+    "userPlaceholder": "请选择用户",
     "email": "邮箱",
     "emailPlaceholder": "请输入邮箱",
     "role": "角色",
@@ -689,5 +763,6 @@
     "promoteTitle": "提升系统管理员",
     "demoteTitle": "降级系统管理员",
     "promotedCountHint": "仅内置管理员可提升系统管理员，最多 {limit} 个。"
-  }
+  },
+  "internal": ""
 }

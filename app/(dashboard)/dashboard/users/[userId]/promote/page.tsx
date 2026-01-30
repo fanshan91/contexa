@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { requireUser } from '@/lib/auth/guards';
 import { prisma } from '@/lib/db/prisma';
 import { PromoteForm } from '../../promote-form';
@@ -46,11 +46,7 @@ export default async function PromoteUserPage({
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('confirmAction')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Card title={t('confirmAction')} contentClassName="space-y-4">
           <div className="text-sm text-muted-foreground">
             {t('targetUser')}: {target.email}
           </div>
@@ -58,7 +54,6 @@ export default async function PromoteUserPage({
             {t('promotedCountHint', { limit: 5 })}
           </div>
           <PromoteForm userId={target.id} disabled={target.isSystemAdmin} />
-        </CardContent>
       </Card>
     </div>
   );

@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { ReactNode } from 'react';
 import { getTranslations } from 'next-intl/server';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { prisma } from '@/lib/db/prisma';
 import { requireUser } from '@/lib/auth/guards';
+import { ProjectPermissionProvider } from '@/lib/auth/project-permissions-context';
 import { ProjectShell } from './project-shell';
 
 export default async function ProjectLayout({
@@ -23,19 +24,15 @@ export default async function ProjectLayout({
     return (
       <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('invalidProjectIdTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
-            <div className="text-sm text-muted-foreground">
-              {t('invalidProjectIdDesc')}
-            </div>
+          <Card
+            title={<span className="text-base">{t('invalidProjectIdTitle')}</span>}
+            contentClassName="flex items-center justify-between gap-4"
+          >
+            <div className="text-sm text-muted-foreground">{t('invalidProjectIdDesc')}</div>
             <Button asChild variant="outline">
               <Link href="/dashboard">{t('backToProjects')}</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </Card>
         </div>
       </div>
     );
@@ -51,17 +48,15 @@ export default async function ProjectLayout({
     return (
       <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('noAccessTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
+          <Card
+            title={<span className="text-base">{t('noAccessTitle')}</span>}
+            contentClassName="flex items-center justify-between gap-4"
+          >
             <div className="text-sm text-muted-foreground">{t('noAccessDesc')}</div>
             <Button asChild variant="outline">
               <Link href="/dashboard">{t('backToProjects')}</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </Card>
         </div>
       </div>
     );
@@ -69,32 +64,49 @@ export default async function ProjectLayout({
 
   const project = await prisma.project.findUnique({
     where: { id },
-    select: { id: true, name: true, sourceLocale: true }
+    select: { id: true, name: true, sourceLocale: true, createdByUserId: true }
   });
 
   if (!project) {
     return (
       <div className="h-[calc(100dvh-68px)] overflow-y-auto bg-muted/30 px-4 py-6 lg:px-6">
         <div className="mx-auto w-full max-w-3xl">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">{t('notFoundTitle')}</CardTitle>
-          </CardHeader>
-          <CardContent className="flex items-center justify-between gap-4">
+          <Card
+            title={<span className="text-base">{t('notFoundTitle')}</span>}
+            contentClassName="flex items-center justify-between gap-4"
+          >
             <div className="text-sm text-muted-foreground">{t('notFoundDesc')}</div>
             <Button asChild variant="outline">
               <Link href="/dashboard">{t('backToProjects')}</Link>
             </Button>
-          </CardContent>
-        </Card>
+          </Card>
         </div>
       </div>
     );
   }
 
+  const creatorId = project.createdByUserId
+    ? project.createdByUserId
+    : (
+        await prisma.projectMember.findFirst({
+          where: { projectId: project.id, role: 'admin' },
+          orderBy: { createdAt: 'asc' },
+          select: { userId: true }
+        })
+      )?.userId ?? null;
+
   return (
-    <ProjectShell projectId={project.id} projectName={project.name}>
-      {children}
-    </ProjectShell>
+    <ProjectPermissionProvider
+      value={{
+        userId: user.id,
+        isSystemAdmin: user.isSystemAdmin,
+        memberRole: member?.role ?? null,
+        creatorId
+      }}
+    >
+      <ProjectShell projectId={project.id} projectName={project.name}>
+        {children}
+      </ProjectShell>
+    </ProjectPermissionProvider>
   );
 }

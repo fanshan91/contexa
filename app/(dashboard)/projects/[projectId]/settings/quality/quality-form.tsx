@@ -6,7 +6,7 @@ import { ActionState } from '@/lib/auth/middleware';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { FormError } from '@/components/form-error';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { RadioGroup } from '@/components/ui/radio-group';
 import { updateProjectQualityAction } from '../actions';
 
 export function ProjectSettingsQualityForm({
@@ -41,20 +41,13 @@ export function ProjectSettingsQualityForm({
           onValueChange={(v) => setQualityMode(v)}
           className="grid gap-3"
           disabled={!canEdit}
-        >
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <RadioGroupItem value="standard" />
-            <span>{t('modeStandard')}</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <RadioGroupItem value="lenient" />
-            <span>{t('modeLenient')}</span>
-          </label>
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <RadioGroupItem value="strict" />
-            <span>{t('modeStrict')}</span>
-          </label>
-        </RadioGroup>
+          optionClassName="text-foreground"
+          options={[
+            { value: 'standard', label: <span>{t('modeStandard')}</span> },
+            { value: 'lenient', label: <span>{t('modeLenient')}</span> },
+            { value: 'strict', label: <span>{t('modeStrict')}</span> }
+          ]}
+        />
         <p className="text-sm text-muted-foreground">{t('modeHelp')}</p>
       </div>
 

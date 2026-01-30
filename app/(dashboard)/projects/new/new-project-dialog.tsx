@@ -3,8 +3,8 @@
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import { Dialog } from '@/components/ui/dialog';
 import { NewProjectForm } from './new-project-form';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 
 export function NewProjectDialog({
   title,
@@ -21,22 +21,17 @@ export function NewProjectDialog({
       onOpenChange={(open) => {
         if (!open) router.push('/dashboard');
       }}
-    >
-      <DialogContent className="max-w-3xl">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold text-foreground">
-            {title}
-          </DialogTitle>
-        </DialogHeader>
-
-        <NewProjectForm />
-
-        <DialogFooter className="pt-2">
+      title={title}
+      contentClassName="max-w-3xl"
+      footer={
+        <div className="pt-2">
           <Button asChild variant="outline">
             <Link href="/dashboard">{backLabel}</Link>
           </Button>
-        </DialogFooter>
-      </DialogContent>
+        </div>
+      }
+    >
+      <NewProjectForm />
     </Dialog>
   );
 }

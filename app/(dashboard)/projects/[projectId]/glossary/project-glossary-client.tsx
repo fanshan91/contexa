@@ -1,380 +1,636 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
 import { useTranslations } from 'next-intl';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card-primitives';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { Select } from '@/components/ui/select';
+import { Table, type TableColumn } from '@/components/ui/table';
+import { Dialog } from '@/components/ui/dialog';
+import { RadioGroup } from '@/components/ui/radio-group';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
+import { TargetLocaleSelect } from '@/components/target-locale-select';
 import { cn } from '@/lib/utils';
+import {
+  createGlossaryTermAction,
+  createNegativePromptAction,
+  deleteGlossaryTermsAction,
+  deleteNegativePromptsAction,
+  listGlossaryTermsQuery,
+  listNegativePromptsQuery,
+  toggleGlossaryTermStatusAction,
+  toggleNegativePromptStatusAction,
+  updateGlossaryTermAction,
+  updateNegativePromptAction,
+  type GlossaryListResult,
+  type GlossaryTermListItem,
+  type NegativePromptListItem,
+  type NegativePromptListResult
+} from './actions';
 
 type GlossaryType = 'recommended' | 'forced';
 type GlossaryStatus = 'enabled' | 'disabled';
 
-type GlossaryItem = {
-  id: string;
-  locale: string;
-  source: string;
-  target: string;
-  type: GlossaryType;
-  status: GlossaryStatus;
-  note: string;
-  updatedAt: number;
-  updatedBy: string;
-};
-
 type FilterType = 'all' | GlossaryType;
 type FilterStatus = 'all' | GlossaryStatus;
 
-function formatUpdatedAt(ts: number) {
-  return new Date(ts).toLocaleString(undefined, { hour12: false });
+function formatUpdatedAt(iso: string) {
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return '—';
+  return d.toLocaleString(undefined, { hour12: false });
 }
 
-function normalizeText(text: string) {
-  return text.trim().toLowerCase();
-}
-
-function createMockItems(now: number): GlossaryItem[] {
-  return [
-    {
-      id: 'g-001',
-      locale: 'en',
-      source: '语境',
-      target: 'context',
-      type: 'recommended',
-      status: 'enabled',
-      note: '优先使用 context，避免 scene 造成歧义。',
-      updatedAt: now - 1000 * 60 * 40,
-      updatedBy: 'Alice'
-    },
-    {
-      id: 'g-002',
-      locale: 'en',
-      source: '词条',
-      target: 'entry',
-      type: 'forced',
-      status: 'enabled',
-      note: '文档与 UI 中统一使用 entry。',
-      updatedAt: now - 1000 * 60 * 120,
-      updatedBy: 'Bob'
-    },
-    {
-      id: 'g-003',
-      locale: 'en',
-      source: '页面',
-      target: 'page',
-      type: 'recommended',
-      status: 'disabled',
-      note: '早期项目曾用 screen，现已逐步统一。',
-      updatedAt: now - 1000 * 60 * 60 * 12,
-      updatedBy: 'Carol'
-    },
-    {
-      id: 'g-004',
-      locale: 'ja',
-      source: '术语库',
-      target: '用語集',
-      type: 'recommended',
-      status: 'enabled',
-      note: '与 UI 导航命名一致。',
-      updatedAt: now - 1000 * 60 * 25,
-      updatedBy: 'Daisuke'
-    },
-    {
-      id: 'g-005',
-      locale: 'ja',
-      source: '强制',
-      target: '必須',
-      type: 'forced',
-      status: 'enabled',
-      note: '强制类提示语使用「必須」。',
-      updatedAt: now - 1000 * 60 * 180,
-      updatedBy: 'Eri'
-    },
-    {
-      id: 'g-006',
-      locale: 'zh-TW',
-      source: '目标语言',
-      target: '目標語言',
-      type: 'recommended',
-      status: 'enabled',
-      note: '繁体中文统一用「目標」。',
-      updatedAt: now - 1000 * 60 * 90,
-      updatedBy: 'Frank'
-    }
-  ];
-}
-
-function makeId() {
-  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-export function ProjectGlossaryClient({ projectId }: { projectId: number }) {
+export function ProjectGlossaryClient({
+  projectId,
+  targetLocales,
+  canManage,
+  initialLocale,
+  initialTerms,
+  initialNegatives,
+  bootstrapError
+}: {
+  projectId: number;
+  targetLocales: string[];
+  canManage: boolean;
+  initialLocale: string;
+  initialTerms: GlossaryListResult;
+  initialNegatives: NegativePromptListResult;
+  bootstrapError: string;
+}) {
   const t = useTranslations('projectGlossary');
   const { push } = useToast();
+  const [isPending, startTransition] = useTransition();
 
-  const targetLocales = useMemo(() => ['en', 'ja', 'zh-TW'], []);
-  const canManage = true;
-
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
-
-  const [locale, setLocale] = useState<string>(() => targetLocales[0] ?? '');
+  const [tab, setTab] = useState<'terms' | 'negative'>('terms');
+  const [locale, setLocale] = useState<string>(initialLocale);
   const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<FilterType>('all');
-  const [statusFilter, setStatusFilter] = useState<FilterStatus>('all');
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
 
-  const [items, setItems] = useState<GlossaryItem[]>(() =>
-    createMockItems(Date.now())
-  );
+  const [termType, setTermType] = useState<FilterType>('all');
+  const [termStatus, setTermStatus] = useState<FilterStatus>('all');
+  const [negativeStatus, setNegativeStatus] = useState<FilterStatus>('all');
+
+  const [terms, setTerms] = useState<GlossaryListResult>(initialTerms);
+  const [negatives, setNegatives] = useState<NegativePromptListResult>(initialNegatives);
+
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string>(bootstrapError);
+  const listFetchSeq = useRef(0);
 
   const [editOpen, setEditOpen] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [form, setForm] = useState({
+  const [editingId, setEditingId] = useState<number | null>(null);
+
+  const [termForm, setTermForm] = useState({
     source: '',
     target: '',
     type: 'recommended' as GlossaryType,
     status: 'enabled' as GlossaryStatus,
     note: ''
   });
-  const [formError, setFormError] = useState('');
 
+  const [negativeForm, setNegativeForm] = useState({
+    phrase: '',
+    alternative: '',
+    status: 'enabled' as GlossaryStatus,
+    note: ''
+  });
+
+  const [formError, setFormError] = useState('');
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [deleteIds, setDeleteIds] = useState<number[]>([]);
+
+  const pageCount = useMemo(() => {
+    const total = tab === 'terms' ? terms.total : negatives.total;
+    const size = tab === 'terms' ? terms.pageSize : negatives.pageSize;
+    return Math.max(1, Math.ceil(total / size));
+  }, [negatives.pageSize, negatives.total, tab, terms.pageSize, terms.total]);
 
   useEffect(() => {
+    if (!locale) return;
+
     const timer = window.setTimeout(() => {
-      setLoading(false);
-    }, 280);
+      const seq = ++listFetchSeq.current;
+      setLoading(true);
+      setError('');
+
+      (async () => {
+        try {
+          if (tab === 'terms') {
+            const res = await listGlossaryTermsQuery({
+              projectId,
+              locale,
+              query,
+              type: termType,
+              status: termStatus,
+              page: terms.page,
+              pageSize: terms.pageSize
+            });
+            if (listFetchSeq.current !== seq) return;
+            if (res.ok) setTerms(res.data);
+            else setError(res.error);
+            return;
+          }
+
+          const res = await listNegativePromptsQuery({
+            projectId,
+            locale,
+            query,
+            status: negativeStatus,
+            page: negatives.page,
+            pageSize: negatives.pageSize
+          });
+          if (listFetchSeq.current !== seq) return;
+          if (res.ok) setNegatives(res.data);
+          else setError(res.error);
+        } finally {
+          if (listFetchSeq.current === seq) setLoading(false);
+        }
+      })();
+    }, 240);
+
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [
+    locale,
+    negativeStatus,
+    negatives.page,
+    negatives.pageSize,
+    projectId,
+    query,
+    tab,
+    termStatus,
+    termType,
+    terms.page,
+    terms.pageSize
+  ]);
 
-  const filtered = useMemo(() => {
-    const q = normalizeText(query);
-    return items
-      .filter((it) => it.locale === locale)
-      .filter((it) => (typeFilter === 'all' ? true : it.type === typeFilter))
-      .filter((it) => (statusFilter === 'all' ? true : it.status === statusFilter))
-      .filter((it) => {
-        if (!q) return true;
-        const haystack = normalizeText(`${it.source} ${it.target} ${it.note}`);
-        return haystack.includes(q);
-      })
-      .sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [items, locale, query, statusFilter, typeFilter]);
-
-  const selectedCountInView = useMemo(() => {
-    if (selectedIds.size === 0) return 0;
-    const ids = new Set(filtered.map((it) => it.id));
-    let count = 0;
-    selectedIds.forEach((id) => {
-      if (ids.has(id)) count += 1;
-    });
-    return count;
-  }, [filtered, selectedIds]);
-
-  const allChecked = useMemo(() => {
-    if (filtered.length === 0) return false;
-    return filtered.every((it) => selectedIds.has(it.id));
-  }, [filtered, selectedIds]);
-
-  const isIndeterminate = useMemo(() => {
-    if (filtered.length === 0) return false;
-    const checked = filtered.filter((it) => selectedIds.has(it.id)).length;
-    return checked > 0 && checked < filtered.length;
-  }, [filtered, selectedIds]);
-
-  function openCreate() {
-    setEditingId(null);
-    setForm({ source: '', target: '', type: 'recommended', status: 'enabled', note: '' });
+  useEffect(() => {
     setFormError('');
-    setEditOpen(true);
-  }
+  }, [tab, locale]);
 
-  function openEdit(id: string) {
-    const it = items.find((x) => x.id === id);
-    if (!it) return;
-    setEditingId(id);
-    setForm({
-      source: it.source,
-      target: it.target,
-      type: it.type,
-      status: it.status,
-      note: it.note
-    });
-    setFormError('');
-    setEditOpen(true);
-  }
+  const viewItems = tab === 'terms' ? terms.items : negatives.items;
+  const showEmpty = !error && viewItems.length === 0;
 
-  function validateUniqueness(nextSource: string) {
-    const normalized = normalizeText(nextSource);
-    if (!normalized) return null;
-    return items.find(
-      (it) =>
-        it.locale === locale &&
-        normalizeText(it.source) === normalized &&
-        it.id !== editingId
+  const renderNote = (note?: string | null) =>
+    note ? (
+      <details className="group">
+        <summary className="cursor-pointer list-none text-muted-foreground hover:text-foreground">
+          <span className="line-clamp-2">{note}</span>
+          <span className="mt-1 inline-flex text-xs text-muted-foreground group-open:hidden">
+            {t('expand')}
+          </span>
+          <span className="mt-1 hidden text-xs text-muted-foreground group-open:inline-flex">
+            {t('collapse')}
+          </span>
+        </summary>
+      </details>
+    ) : (
+      <span className="text-muted-foreground">{t('empty')}</span>
     );
-  }
 
-  function saveItem() {
-    setFormError('');
-    if (!form.source.trim() || !form.target.trim()) {
-      setFormError(t('formRequiredError'));
-      return;
-    }
-
-    const conflict = validateUniqueness(form.source);
-    if (conflict) {
-      setFormError(
-        t('formConflictError', {
-          source: conflict.source,
-          target: conflict.target
-        })
-      );
-      return;
-    }
-
-    const now = Date.now();
-    const updatedBy = '你';
-
-    if (editingId) {
-      setItems((prev) =>
-        prev.map((it) =>
-          it.id === editingId
-            ? {
-                ...it,
-                source: form.source.trim(),
-                target: form.target.trim(),
-                type: form.type,
-                status: form.status,
-                note: form.note.trim(),
-                updatedAt: now,
-                updatedBy
-              }
-            : it
+  const termColumns = useMemo<Array<TableColumn<GlossaryTermListItem>>>(
+    () => [
+      {
+        key: 'source',
+        title: t('colSource'),
+        dataIndex: 'source',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 font-medium text-foreground align-top'
+      },
+      {
+        key: 'target',
+        title: t('colTarget'),
+        dataIndex: 'target',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 text-muted-foreground align-top'
+      },
+      {
+        key: 'type',
+        title: t('colType'),
+        dataIndex: 'type',
+        headerClassName: 'pr-4 whitespace-nowrap',
+        cellClassName: 'py-3 pr-4 align-top',
+        render: (value: unknown) => (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              value === 'forced'
+                ? 'bg-warning/15 text-warning'
+                : 'bg-secondary text-secondary-foreground'
+            )}
+          >
+            {value === 'forced' ? t('typeForced') : t('typeRecommended')}
+          </span>
         )
-      );
-      push({
-        title: t('toastSavedTitle'),
-        message: t('toastSavedMessage'),
-        variant: 'default'
+      },
+      {
+        key: 'status',
+        title: t('colStatus'),
+        dataIndex: 'status',
+        headerClassName: 'pr-4 whitespace-nowrap',
+        cellClassName: 'py-3 pr-4 align-top',
+        render: (value: unknown) => (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              value === 'enabled' ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
+            )}
+          >
+            {value === 'enabled' ? t('statusEnabled') : t('statusDisabled')}
+          </span>
+        )
+      },
+      {
+        key: 'note',
+        title: t('colNote'),
+        dataIndex: 'note',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 align-top',
+        render: (value: unknown) => renderNote(value as string | null | undefined)
+      },
+      {
+        key: 'updatedAt',
+        title: t('colUpdatedAt'),
+        dataIndex: 'updatedAt',
+        headerClassName: 'pr-4 whitespace-nowrap',
+        cellClassName: 'py-3 pr-4 whitespace-nowrap text-muted-foreground align-top',
+        render: (value: unknown, record: GlossaryTermListItem) => (
+          <div>
+            <div>{formatUpdatedAt(String(value))}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t('updatedBy', { name: record.updatedBy })}
+            </div>
+          </div>
+        )
+      },
+      {
+        key: 'operations',
+        title: t('colOperations'),
+        dataIndex: 'id',
+        headerClassName: 'pr-0 whitespace-nowrap text-right',
+        cellClassName: 'py-3 pr-0 align-top',
+        align: 'right' as const,
+        render: (value: unknown, record: GlossaryTermListItem) =>
+          canManage ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => openEdit(record)}>
+                {t('edit')}
+              </Button>
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => toggleStatus(record)}>
+                {record.status === 'enabled' ? t('disable') : t('enable')}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => requestDelete([Number(value)])}
+              >
+                {t('delete')}
+              </Button>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">{t('empty')}</span>
+          )
+      }
+    ],
+    [canManage, isPending, t]
+  );
+
+  const negativeColumns = useMemo<Array<TableColumn<NegativePromptListItem>>>(
+    () => [
+      {
+        key: 'phrase',
+        title: t('negativeColPhrase'),
+        dataIndex: 'phrase',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 font-medium text-foreground align-top'
+      },
+      {
+        key: 'alternative',
+        title: t('negativeColAlternative'),
+        dataIndex: 'alternative',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 text-muted-foreground align-top',
+        render: (value: unknown) => (value ? String(value) : t('empty'))
+      },
+      {
+        key: 'status',
+        title: t('colStatus'),
+        dataIndex: 'status',
+        headerClassName: 'pr-4 whitespace-nowrap',
+        cellClassName: 'py-3 pr-4 align-top',
+        render: (value: unknown) => (
+          <span
+            className={cn(
+              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              value === 'enabled' ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'
+            )}
+          >
+            {value === 'enabled' ? t('statusEnabled') : t('statusDisabled')}
+          </span>
+        )
+      },
+      {
+        key: 'note',
+        title: t('colNote'),
+        dataIndex: 'note',
+        headerClassName: 'pr-4',
+        cellClassName: 'py-3 pr-4 align-top',
+        render: (value: unknown) => renderNote(value as string | null | undefined)
+      },
+      {
+        key: 'updatedAt',
+        title: t('colUpdatedAt'),
+        dataIndex: 'updatedAt',
+        headerClassName: 'pr-4 whitespace-nowrap',
+        cellClassName: 'py-3 pr-4 whitespace-nowrap text-muted-foreground align-top',
+        render: (value: unknown, record: NegativePromptListItem) => (
+          <div>
+            <div>{formatUpdatedAt(String(value))}</div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t('updatedBy', { name: record.updatedBy })}
+            </div>
+          </div>
+        )
+      },
+      {
+        key: 'operations',
+        title: t('colOperations'),
+        dataIndex: 'id',
+        headerClassName: 'pr-0 whitespace-nowrap text-right',
+        cellClassName: 'py-3 pr-0 align-top',
+        align: 'right' as const,
+        render: (value: unknown, record: NegativePromptListItem) =>
+          canManage ? (
+            <div className="flex flex-wrap items-center justify-end gap-2">
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => openEdit(record)}>
+                {t('edit')}
+              </Button>
+              <Button size="sm" variant="outline" disabled={isPending} onClick={() => toggleStatus(record)}>
+                {record.status === 'enabled' ? t('disable') : t('enable')}
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => requestDelete([Number(value)])}
+              >
+                {t('delete')}
+              </Button>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">{t('empty')}</span>
+          )
+      }
+    ],
+    [canManage, isPending, t]
+  );
+
+  const openCreate = () => {
+    setEditingId(null);
+    setFormError('');
+    if (tab === 'terms') {
+      setTermForm({ source: '', target: '', type: 'recommended', status: 'enabled', note: '' });
+    } else {
+      setNegativeForm({ phrase: '', alternative: '', status: 'enabled', note: '' });
+    }
+    setEditOpen(true);
+  };
+
+  const openEdit = (item: GlossaryTermListItem | NegativePromptListItem) => {
+    setFormError('');
+    if (tab === 'terms') {
+      const it = item as GlossaryTermListItem;
+      setEditingId(it.id);
+      setTermForm({
+        source: it.source,
+        target: it.target,
+        type: it.type,
+        status: it.status,
+        note: it.note ?? ''
       });
     } else {
-      const newItem: GlossaryItem = {
-        id: makeId(),
-        locale,
-        source: form.source.trim(),
-        target: form.target.trim(),
-        type: form.type,
-        status: form.status,
-        note: form.note.trim(),
-        updatedAt: now,
-        updatedBy
-      };
-      setItems((prev) => [newItem, ...prev]);
-      push({
-        title: t('toastCreatedTitle'),
-        message: t('toastCreatedMessage'),
-        variant: 'default'
+      const it = item as NegativePromptListItem;
+      setEditingId(it.id);
+      setNegativeForm({
+        phrase: it.phrase,
+        alternative: it.alternative ?? '',
+        status: it.status,
+        note: it.note ?? ''
       });
     }
+    setEditOpen(true);
+  };
 
-    setEditOpen(false);
-  }
-
-  function toggleItemStatus(id: string) {
-    setItems((prev) =>
-      prev.map((it) =>
-        it.id === id
-          ? {
-              ...it,
-              status: it.status === 'enabled' ? 'disabled' : 'enabled',
-              updatedAt: Date.now(),
-              updatedBy: '你'
-            }
-          : it
-      )
-    );
-  }
-
-  function requestDelete(ids: string[]) {
+  const requestDelete = (ids: number[]) => {
     setDeleteIds(ids);
     setDeleteOpen(true);
-  }
+  };
 
-  function confirmDelete() {
-    const ids = new Set(deleteIds);
-    setItems((prev) => prev.filter((it) => !ids.has(it.id)));
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      deleteIds.forEach((id) => next.delete(id));
-      return next;
-    });
-    setDeleteOpen(false);
-    setDeleteIds([]);
-    push({
-      title: t('toastDeletedTitle'),
-      message: t('toastDeletedMessage'),
-      variant: 'default'
-    });
-  }
+  const applyFilterChange = <T,>(setter: (v: T) => void, next: T) => {
+    setter(next);
+    if (tab === 'terms') setTerms((prev) => ({ ...prev, page: 1 }));
+    else setNegatives((prev) => ({ ...prev, page: 1 }));
+  };
 
-  function toggleAllInView(nextChecked: boolean) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (nextChecked) {
-        filtered.forEach((it) => next.add(it.id));
-      } else {
-        filtered.forEach((it) => next.delete(it.id));
+  const changePage = (nextPage: number) => {
+    const safe = Math.min(Math.max(1, nextPage), pageCount);
+    if (tab === 'terms') setTerms((prev) => ({ ...prev, page: safe }));
+    else setNegatives((prev) => ({ ...prev, page: safe }));
+  };
+
+  const submitEdit = () => {
+    setFormError('');
+    startTransition(async () => {
+      if (!locale) return;
+
+      if (tab === 'terms') {
+        if (!termForm.source.trim() || !termForm.target.trim()) {
+          setFormError(t('formRequiredError'));
+          return;
+        }
+
+        const res = editingId
+          ? await updateGlossaryTermAction({
+              projectId,
+              termId: editingId,
+              locale,
+              source: termForm.source,
+              target: termForm.target,
+              type: termForm.type,
+              status: termForm.status,
+              note: termForm.note
+            })
+          : await createGlossaryTermAction({
+              projectId,
+              locale,
+              source: termForm.source,
+              target: termForm.target,
+              type: termForm.type,
+              status: termForm.status,
+              note: termForm.note
+            });
+
+        if (!res.ok) {
+          setFormError(res.error);
+          return;
+        }
+
+        push({ variant: 'default', message: res.success });
+        setEditOpen(false);
+        const listRes = await listGlossaryTermsQuery({
+          projectId,
+          locale,
+          query,
+          type: termType,
+          status: termStatus,
+          page: terms.page,
+          pageSize: terms.pageSize
+        });
+        if (listRes.ok) setTerms(listRes.data);
+        return;
       }
-      return next;
-    });
-  }
 
-  function toggleOne(id: string, nextChecked: boolean) {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (nextChecked) next.add(id);
-      else next.delete(id);
-      return next;
-    });
-  }
+      if (!negativeForm.phrase.trim()) {
+        setFormError(t('negativeRequiredError'));
+        return;
+      }
 
-  function bulkSetStatus(nextStatus: GlossaryStatus) {
-    const ids = new Set(
-      filtered.filter((it) => selectedIds.has(it.id)).map((it) => it.id)
-    );
-    if (ids.size === 0) return;
-    const now = Date.now();
-    setItems((prev) =>
-      prev.map((it) =>
-        ids.has(it.id)
-          ? { ...it, status: nextStatus, updatedAt: now, updatedBy: '你' }
-          : it
-      )
-    );
-    push({
-      title: t('toastBatchUpdatedTitle'),
-      message: t('toastBatchUpdatedMessage', { count: ids.size }),
-      variant: 'default'
+      const res = editingId
+        ? await updateNegativePromptAction({
+            projectId,
+            promptId: editingId,
+            locale,
+            phrase: negativeForm.phrase,
+            alternative: negativeForm.alternative,
+            status: negativeForm.status,
+            note: negativeForm.note
+          })
+        : await createNegativePromptAction({
+            projectId,
+            locale,
+            phrase: negativeForm.phrase,
+            alternative: negativeForm.alternative,
+            status: negativeForm.status,
+            note: negativeForm.note
+          });
+
+      if (!res.ok) {
+        setFormError(res.error);
+        return;
+      }
+
+      push({ variant: 'default', message: res.success });
+      setEditOpen(false);
+      const listRes = await listNegativePromptsQuery({
+        projectId,
+        locale,
+        query,
+        status: negativeStatus,
+        page: negatives.page,
+        pageSize: negatives.pageSize
+      });
+      if (listRes.ok) setNegatives(listRes.data);
     });
-  }
+  };
+
+  const toggleStatus = (item: GlossaryTermListItem | NegativePromptListItem) => {
+    if (!canManage) return;
+    startTransition(async () => {
+      if (tab === 'terms') {
+        const it = item as GlossaryTermListItem;
+        const nextStatus = it.status === 'enabled' ? 'disabled' : 'enabled';
+        const res = await toggleGlossaryTermStatusAction({
+          projectId,
+          termId: it.id,
+          nextStatus
+        });
+        if (!res.ok) {
+          push({ variant: 'destructive', message: res.error });
+          return;
+        }
+        push({ variant: 'default', message: res.success });
+        const listRes = await listGlossaryTermsQuery({
+          projectId,
+          locale,
+          query,
+          type: termType,
+          status: termStatus,
+          page: terms.page,
+          pageSize: terms.pageSize
+        });
+        if (listRes.ok) setTerms(listRes.data);
+        return;
+      }
+
+      const it = item as NegativePromptListItem;
+      const nextStatus = it.status === 'enabled' ? 'disabled' : 'enabled';
+      const res = await toggleNegativePromptStatusAction({
+        projectId,
+        promptId: it.id,
+        nextStatus
+      });
+      if (!res.ok) {
+        push({ variant: 'destructive', message: res.error });
+        return;
+      }
+      push({ variant: 'default', message: res.success });
+      const listRes = await listNegativePromptsQuery({
+        projectId,
+        locale,
+        query,
+        status: negativeStatus,
+        page: negatives.page,
+        pageSize: negatives.pageSize
+      });
+      if (listRes.ok) setNegatives(listRes.data);
+    });
+  };
+
+  const confirmDelete = () => {
+    startTransition(async () => {
+      const ids = deleteIds.slice();
+      setDeleteOpen(false);
+      setDeleteIds([]);
+      if (ids.length === 0) return;
+
+      const res =
+        tab === 'terms'
+          ? await deleteGlossaryTermsAction({ projectId, termIds: ids })
+          : await deleteNegativePromptsAction({ projectId, promptIds: ids });
+
+      if (!res.ok) {
+        push({ variant: 'destructive', message: res.error });
+        return;
+      }
+      push({ variant: 'default', message: res.success });
+      if (!locale) return;
+      if (tab === 'terms') {
+        const listRes = await listGlossaryTermsQuery({
+          projectId,
+          locale,
+          query,
+          type: termType,
+          status: termStatus,
+          page: terms.page,
+          pageSize: terms.pageSize
+        });
+        if (listRes.ok) setTerms(listRes.data);
+      } else {
+        const listRes = await listNegativePromptsQuery({
+          projectId,
+          locale,
+          query,
+          status: negativeStatus,
+          page: negatives.page,
+          pageSize: negatives.pageSize
+        });
+        if (listRes.ok) setNegatives(listRes.data);
+      }
+    });
+  };
 
   if (targetLocales.length === 0) {
     return (
@@ -396,51 +652,75 @@ export function ProjectGlossaryClient({ projectId }: { projectId: number }) {
     <div className="space-y-4">
       <Card>
         <CardHeader className="space-y-3">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as 'terms' | 'negative')}>
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+              <TabsList>
+                <TabsTrigger value="terms">{t('tabTerms')}</TabsTrigger>
+                <TabsTrigger value="negative">{t('tabNegative')}</TabsTrigger>
+              </TabsList>
+
+              <div className="flex items-center gap-2">
+                {canManage ? (
+                  <Button onClick={openCreate} disabled={!locale || isPending}>
+                    {tab === 'terms' ? t('create') : t('negativeCreate')}
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          </Tabs>
+
           <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <Label htmlFor="glossary-locale">{t('targetLocale')}</Label>
-                <select
+                <TargetLocaleSelect
                   id="glossary-locale"
+                  targetLocales={targetLocales}
                   value={locale}
-                  onChange={(e) => {
-                    setLocale(e.target.value);
-                    setSelectedIds(new Set());
+                  onValueChange={(next) => {
+                    setLocale(next);
+                    setTerms((prev) => ({ ...prev, page: 1 }));
+                    setNegatives((prev) => ({ ...prev, page: 1 }));
                   }}
-                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                >
-                  {targetLocales.map((l) => (
-                    <option key={l} value={l}>
-                      {l}
-                    </option>
-                  ))}
-                </select>
+                  className="mt-1 w-full"
+                />
               </div>
-              <div>
-                <Label htmlFor="glossary-type">{t('filterType')}</Label>
-                <select
-                  id="glossary-type"
-                  value={typeFilter}
-                  onChange={(e) => setTypeFilter(e.target.value as FilterType)}
-                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                >
-                  <option value="all">{t('all')}</option>
-                  <option value="recommended">{t('typeRecommended')}</option>
-                  <option value="forced">{t('typeForced')}</option>
-                </select>
-              </div>
+              {tab === 'terms' ? (
+                <div>
+                  <Label htmlFor="glossary-type">{t('filterType')}</Label>
+                  <Select
+                    id="glossary-type"
+                    value={termType}
+                    onValueChange={(value) => applyFilterChange(setTermType, value as FilterType)}
+                    placeholder={t('all')}
+                    className="mt-1 h-10 w-full"
+                    options={[
+                      { value: 'all', label: t('all') },
+                      { value: 'recommended', label: t('typeRecommended') },
+                      { value: 'forced', label: t('typeForced') }
+                    ]}
+                  />
+                </div>
+              ) : null}
+
               <div>
                 <Label htmlFor="glossary-status">{t('filterStatus')}</Label>
-                <select
+                <Select
                   id="glossary-status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value as FilterStatus)}
-                  className="mt-1 h-10 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-                >
-                  <option value="all">{t('all')}</option>
-                  <option value="enabled">{t('statusEnabled')}</option>
-                  <option value="disabled">{t('statusDisabled')}</option>
-                </select>
+                  value={tab === 'terms' ? termStatus : negativeStatus}
+                  onValueChange={(value) =>
+                    tab === 'terms'
+                      ? applyFilterChange(setTermStatus, value as FilterStatus)
+                      : applyFilterChange(setNegativeStatus, value as FilterStatus)
+                  }
+                  placeholder={t('all')}
+                  className="mt-1 h-10 w-full"
+                  options={[
+                    { value: 'all', label: t('all') },
+                    { value: 'enabled', label: t('statusEnabled') },
+                    { value: 'disabled', label: t('statusDisabled') }
+                  ]}
+                />
               </div>
               <div className="sm:col-span-2 lg:col-span-1">
                 <Label htmlFor="glossary-search">{t('search')}</Label>
@@ -456,45 +736,12 @@ export function ProjectGlossaryClient({ projectId }: { projectId: number }) {
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
-              {canManage ? (
-                <Button onClick={openCreate}>{t('create')}</Button>
-              ) : null}
+            <div className="text-sm text-muted-foreground">
+              {tab === 'terms' ? t('termTotal', { count: terms.total }) : t('negativeTotal', { count: negatives.total })}
             </div>
           </div>
 
-          {canManage ? (
-            selectedCountInView > 0 ? (
-              <div className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3 sm:flex-row sm:items-center sm:justify-between">
-                <div className="text-sm text-muted-foreground">
-                  {t('selectedCount', { count: selectedCountInView })}
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => bulkSetStatus('enabled')}
-                  >
-                    {t('batchEnable')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => bulkSetStatus('disabled')}
-                  >
-                    {t('batchDisable')}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => requestDelete(filtered.filter((it) => selectedIds.has(it.id)).map((it) => it.id))}
-                  >
-                    {t('batchDelete')}
-                  </Button>
-                </div>
-              </div>
-            ) : null
-          ) : (
+          {canManage ? null : (
             <div className="rounded-lg border border-border bg-card p-3 text-sm text-muted-foreground">
               {t('readonlyHint')}
             </div>
@@ -503,178 +750,71 @@ export function ProjectGlossaryClient({ projectId }: { projectId: number }) {
 
         <CardContent>
           {error ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+            <div className="mb-4 rounded-lg border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
               {error}
             </div>
-          ) : loading ? (
-            <div className="space-y-3">
-              <div className="h-4 w-1/3 animate-pulse rounded-md bg-muted" />
-              <div className="h-4 w-2/3 animate-pulse rounded-md bg-muted" />
-              <div className="h-4 w-1/2 animate-pulse rounded-md bg-muted" />
-            </div>
-          ) : filtered.length === 0 ? (
+          ) : null}
+
+          {showEmpty ? (
             <div className="rounded-xl border border-border bg-card p-6">
               <div className="text-sm font-medium text-foreground">{t('emptyTitle')}</div>
               <div className="mt-1 text-sm text-muted-foreground">{t('emptyDesc')}</div>
-              <div className="mt-4 rounded-lg border border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-                <div className="font-medium text-foreground">{t('exampleTitle')}</div>
-                <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t('colSource')}</div>
-                    <div className="mt-1 font-medium text-foreground">entry</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t('colTarget')}</div>
-                    <div className="mt-1 font-medium text-foreground">条目</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t('colType')}</div>
-                    <div className="mt-1 font-medium text-foreground">{t('typeRecommended')}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">{t('colStatus')}</div>
-                    <div className="mt-1 font-medium text-foreground">{t('statusEnabled')}</div>
-                  </div>
-                </div>
-                <div className="mt-3 text-xs text-muted-foreground">
-                  {t('exampleNote')}
-                </div>
-              </div>
               {canManage ? (
                 <div className="mt-4">
-                  <Button onClick={openCreate}>{t('create')}</Button>
+                  <Button onClick={openCreate}>
+                    {tab === 'terms' ? t('create') : t('negativeCreate')}
+                  </Button>
                 </div>
               ) : null}
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left">
-                    <th className="w-10 py-2 pr-2">
-                      {canManage ? (
-                        <input
-                          aria-label={t('selectAll')}
-                          type="checkbox"
-                          checked={allChecked}
-                          ref={(el) => {
-                            if (el) el.indeterminate = isIndeterminate;
-                          }}
-                          onChange={(e) => toggleAllInView(e.target.checked)}
-                          className="size-4 rounded border border-input bg-background align-middle accent-primary"
-                        />
-                      ) : null}
-                    </th>
-                    <th className="py-2 pr-4">{t('colSource')}</th>
-                    <th className="py-2 pr-4">{t('colTarget')}</th>
-                    <th className="py-2 pr-4 whitespace-nowrap">{t('colType')}</th>
-                    <th className="py-2 pr-4 whitespace-nowrap">{t('colStatus')}</th>
-                    <th className="py-2 pr-4">{t('colNote')}</th>
-                    <th className="py-2 pr-4 whitespace-nowrap">{t('colUpdatedAt')}</th>
-                    <th className="py-2 pr-0 whitespace-nowrap">{t('colOperations')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map((it) => (
-                    <tr
-                      key={it.id}
-                      className="border-b border-border last:border-0 align-top"
-                    >
-                      <td className="py-3 pr-2">
-                        {canManage ? (
-                          <input
-                            aria-label={t('selectOne')}
-                            type="checkbox"
-                            checked={selectedIds.has(it.id)}
-                            onChange={(e) => toggleOne(it.id, e.target.checked)}
-                            className="size-4 rounded border border-input bg-background align-middle accent-primary"
-                          />
-                        ) : null}
-                      </td>
-                      <td className="py-3 pr-4 font-medium text-foreground">{it.source}</td>
-                      <td className="py-3 pr-4 text-muted-foreground">{it.target}</td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={cn(
-                            'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
-                            it.type === 'forced'
-                              ? 'bg-warning/15 text-warning'
-                              : 'bg-secondary text-secondary-foreground'
-                          )}
-                        >
-                          {it.type === 'forced' ? t('typeForced') : t('typeRecommended')}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        <span
-                          className={cn(
-                            'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
-                            it.status === 'enabled'
-                              ? 'bg-success/15 text-success'
-                              : 'bg-muted text-muted-foreground'
-                          )}
-                        >
-                          {it.status === 'enabled' ? t('statusEnabled') : t('statusDisabled')}
-                        </span>
-                      </td>
-                      <td className="py-3 pr-4">
-                        {it.note ? (
-                          <details className="group">
-                            <summary className="cursor-pointer list-none text-muted-foreground hover:text-foreground">
-                              <span className="line-clamp-2">{it.note}</span>
-                              <span className="mt-1 inline-flex text-xs text-muted-foreground group-open:hidden">
-                                {t('expand')}
-                              </span>
-                              <span className="mt-1 hidden text-xs text-muted-foreground group-open:inline-flex">
-                                {t('collapse')}
-                              </span>
-                            </summary>
-                          </details>
-                        ) : (
-                          <span className="text-muted-foreground">{t('empty')}</span>
-                        )}
-                      </td>
-                      <td className="py-3 pr-4 whitespace-nowrap text-muted-foreground">
-                        <div>{formatUpdatedAt(it.updatedAt)}</div>
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {t('updatedBy', { name: it.updatedBy })}
-                        </div>
-                      </td>
-                      <td className="py-3 pr-0">
-                        {canManage ? (
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => openEdit(it.id)}
-                            >
-                              {t('edit')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => toggleItemStatus(it.id)}
-                            >
-                              {it.status === 'enabled' ? t('disable') : t('enable')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => requestDelete([it.id])}
-                            >
-                              {t('delete')}
-                            </Button>
-                          </div>
-                        ) : (
-                          <span className="text-muted-foreground">{t('empty')}</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          ) : viewItems.length ? (
+            <div className="space-y-4">
+              {tab === 'terms' ? (
+                <Table
+                  columns={termColumns}
+                  data={terms.items}
+                  rowKey="id"
+                  loading={loading}
+                  emptyText={t('emptyTitle')}
+                />
+              ) : (
+                <Table
+                  columns={negativeColumns}
+                  data={negatives.items}
+                  rowKey="id"
+                  loading={loading}
+                  emptyText={t('emptyTitle')}
+                />
+              )}
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="text-sm text-muted-foreground">
+                  {t('pagination', {
+                    page: tab === 'terms' ? terms.page : negatives.page,
+                    pageCount
+                  })}
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={(tab === 'terms' ? terms.page : negatives.page) <= 1 || isPending}
+                    onClick={() => changePage((tab === 'terms' ? terms.page : negatives.page) - 1)}
+                  >
+                    {t('prev')}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={(tab === 'terms' ? terms.page : negatives.page) >= pageCount || isPending}
+                    onClick={() => changePage((tab === 'terms' ? terms.page : negatives.page) + 1)}
+                  >
+                    {t('next')}
+                  </Button>
+                </div>
+              </div>
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
 
@@ -684,156 +824,218 @@ export function ProjectGlossaryClient({ projectId }: { projectId: number }) {
           setEditOpen(open);
           if (!open) setFormError('');
         }}
-      >
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle className="text-base">
-              {editingId ? t('editTitle') : t('createTitle')}
-            </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              {t('dialogDesc', { locale })}
-            </DialogDescription>
-          </DialogHeader>
-
-          {formError ? (
-            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-              {formError}
-              {(() => {
-                const conflict = validateUniqueness(form.source);
-                if (!conflict) return null;
-                return (
-                  <div className="mt-2">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        setEditOpen(false);
-                        window.setTimeout(() => openEdit(conflict.id), 0);
-                      }}
-                    >
-                      {t('goToEditConflict')}
-                    </Button>
-                  </div>
-                );
-              })()}
-            </div>
-          ) : null}
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="glossary-source">{t('formSource')}</Label>
-              <div className="mt-1">
-                <Input
-                  id="glossary-source"
-                  value={form.source}
-                  onChange={(e) => setForm((prev) => ({ ...prev, source: e.target.value }))}
-                  placeholder={t('formSourcePlaceholder')}
-                  maxLength={200}
-                />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="glossary-target">{t('formTarget')}</Label>
-              <div className="mt-1">
-                <Input
-                  id="glossary-target"
-                  value={form.target}
-                  onChange={(e) => setForm((prev) => ({ ...prev, target: e.target.value }))}
-                  placeholder={t('formTargetPlaceholder')}
-                  maxLength={200}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <Label>{t('formType')}</Label>
-              <RadioGroup
-                value={form.type}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, type: value as GlossaryType }))
-                }
-                className="mt-2 space-y-2"
-              >
-                <Label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="recommended" />
-                  <span className="text-foreground">{t('typeRecommended')}</span>
-                  <span className="text-muted-foreground">{t('typeRecommendedHint')}</span>
-                </Label>
-                <Label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="forced" />
-                  <span className="text-foreground">{t('typeForced')}</span>
-                  <span className="text-muted-foreground">{t('typeForcedHint')}</span>
-                </Label>
-              </RadioGroup>
-            </div>
-            <div>
-              <Label>{t('formStatus')}</Label>
-              <RadioGroup
-                value={form.status}
-                onValueChange={(value) =>
-                  setForm((prev) => ({ ...prev, status: value as GlossaryStatus }))
-                }
-                className="mt-2 space-y-2"
-              >
-                <Label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="enabled" />
-                  <span className="text-foreground">{t('statusEnabled')}</span>
-                </Label>
-                <Label className="flex items-center gap-2 text-sm">
-                  <RadioGroupItem value="disabled" />
-                  <span className="text-foreground">{t('statusDisabled')}</span>
-                </Label>
-              </RadioGroup>
-            </div>
-          </div>
-
-          <div>
-            <Label htmlFor="glossary-note">{t('formNote')}</Label>
-            <div className="mt-1">
-              <textarea
-                id="glossary-note"
-                value={form.note}
-                onChange={(e) => setForm((prev) => ({ ...prev, note: e.target.value }))}
-                placeholder={t('formNotePlaceholder')}
-                maxLength={500}
-                className="min-h-[84px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
-              />
-            </div>
-            <div className="mt-2 text-xs text-muted-foreground">
-              {t('formNoteHelp')}
-            </div>
-          </div>
-
-          <DialogFooter>
+        contentClassName="max-w-2xl"
+        title={
+          tab === 'terms'
+            ? editingId
+              ? t('editTitle')
+              : t('createTitle')
+            : editingId
+              ? t('negativeEditTitle')
+              : t('negativeCreateTitle')
+        }
+        description={t('dialogDesc', { locale })}
+        footer={
+          <>
             <Button variant="outline" onClick={() => setEditOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button onClick={saveItem}>{t('save')}</Button>
-          </DialogFooter>
-        </DialogContent>
+            <Button onClick={submitEdit} disabled={isPending}>
+              {t('save')}
+            </Button>
+          </>
+        }
+      >
+          {formError ? (
+            <div className="rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              {formError}
+            </div>
+          ) : null}
+
+          {tab === 'terms' ? (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="glossary-source">{t('formSource')}</Label>
+                  <div className="mt-1">
+                    <Input
+                      id="glossary-source"
+                      value={termForm.source}
+                      onChange={(e) =>
+                        setTermForm((prev) => ({ ...prev, source: e.target.value }))
+                      }
+                      placeholder={t('formSourcePlaceholder')}
+                      maxLength={200}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="glossary-target">{t('formTarget')}</Label>
+                  <div className="mt-1">
+                    <Input
+                      id="glossary-target"
+                      value={termForm.target}
+                      onChange={(e) =>
+                        setTermForm((prev) => ({ ...prev, target: e.target.value }))
+                      }
+                      placeholder={t('formTargetPlaceholder')}
+                      maxLength={200}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label>{t('formType')}</Label>
+                  <RadioGroup
+                    value={termForm.type}
+                    onValueChange={(value) =>
+                      setTermForm((prev) => ({ ...prev, type: value as GlossaryType }))
+                    }
+                    className="mt-2 gap-2"
+                    options={[
+                      {
+                        value: 'recommended',
+                        label: (
+                          <>
+                            <span className="text-foreground">{t('typeRecommended')}</span>
+                            <span className="text-muted-foreground">{t('typeRecommendedHint')}</span>
+                          </>
+                        )
+                      },
+                      {
+                        value: 'forced',
+                        label: (
+                          <>
+                            <span className="text-foreground">{t('typeForced')}</span>
+                            <span className="text-muted-foreground">{t('typeForcedHint')}</span>
+                          </>
+                        )
+                      }
+                    ]}
+                  />
+                </div>
+                <div>
+                  <Label>{t('formStatus')}</Label>
+                  <RadioGroup
+                    value={termForm.status}
+                    onValueChange={(value) =>
+                      setTermForm((prev) => ({ ...prev, status: value as GlossaryStatus }))
+                    }
+                    className="mt-2 gap-2"
+                    options={[
+                      { value: 'enabled', label: <span className="text-foreground">{t('statusEnabled')}</span> },
+                      { value: 'disabled', label: <span className="text-foreground">{t('statusDisabled')}</span> }
+                    ]}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="glossary-note">{t('formNote')}</Label>
+                <div className="mt-1">
+                  <textarea
+                    id="glossary-note"
+                    value={termForm.note}
+                    onChange={(e) =>
+                      setTermForm((prev) => ({ ...prev, note: e.target.value }))
+                    }
+                    placeholder={t('formNotePlaceholder')}
+                    maxLength={500}
+                    className="min-h-[84px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  />
+                </div>
+                <div className="mt-2 text-xs text-muted-foreground">{t('formNoteHelp')}</div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="negative-phrase">{t('negativePhrase')}</Label>
+                  <div className="mt-1">
+                    <Input
+                      id="negative-phrase"
+                      value={negativeForm.phrase}
+                      onChange={(e) =>
+                        setNegativeForm((prev) => ({ ...prev, phrase: e.target.value }))
+                      }
+                      placeholder={t('negativePhrasePlaceholder')}
+                      maxLength={200}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="negative-alt">{t('negativeAlternative')}</Label>
+                  <div className="mt-1">
+                    <Input
+                      id="negative-alt"
+                      value={negativeForm.alternative}
+                      onChange={(e) =>
+                        setNegativeForm((prev) => ({
+                          ...prev,
+                          alternative: e.target.value
+                        }))
+                      }
+                      placeholder={t('negativeAlternativePlaceholder')}
+                      maxLength={200}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label>{t('formStatus')}</Label>
+                <RadioGroup
+                  value={negativeForm.status}
+                  onValueChange={(value) =>
+                    setNegativeForm((prev) => ({ ...prev, status: value as GlossaryStatus }))
+                  }
+                  className="mt-2 gap-2"
+                  options={[
+                    { value: 'enabled', label: <span className="text-foreground">{t('statusEnabled')}</span> },
+                    { value: 'disabled', label: <span className="text-foreground">{t('statusDisabled')}</span> }
+                  ]}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="negative-note">{t('formNote')}</Label>
+                <div className="mt-1">
+                  <textarea
+                    id="negative-note"
+                    value={negativeForm.note}
+                    onChange={(e) =>
+                      setNegativeForm((prev) => ({ ...prev, note: e.target.value }))
+                    }
+                    placeholder={t('formNotePlaceholder')}
+                    maxLength={500}
+                    className="min-h-[84px] w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
       </Dialog>
 
-      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className="text-base">{t('deleteTitle')}</DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              {t('deleteDesc', { count: deleteIds.length })}
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+      <Dialog
+        open={deleteOpen}
+        onOpenChange={setDeleteOpen}
+        title={t('deleteTitle')}
+        description={t('deleteDesc', { count: deleteIds.length })}
+        footer={
+          <>
             <Button variant="outline" onClick={() => setDeleteOpen(false)}>
               {t('cancel')}
             </Button>
-            <Button variant="destructive" onClick={confirmDelete}>
+            <Button variant="destructive" onClick={confirmDelete} disabled={isPending}>
               {t('confirmDelete')}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      />
     </div>
   );
 }
-

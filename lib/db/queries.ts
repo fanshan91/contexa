@@ -1,8 +1,9 @@
+import { cache } from 'react';
 import { cookies } from 'next/headers';
 import { verifyToken } from '@/lib/auth/session';
 import { prisma } from '@/lib/db/prisma';
 
-export async function getUser() {
+export const getUser = cache(async function getUser() {
   const sessionCookie = (await cookies()).get('session');
   if (!sessionCookie || !sessionCookie.value) {
     return null;
@@ -29,7 +30,7 @@ export async function getUser() {
   return await prisma.user.findFirst({
     where: { id: sessionData.user.id, deletedAt: null }
   });
-}
+});
 
 export async function getTeamByStripeCustomerId(customerId: string) {
   return await prisma.team.findUnique({
@@ -55,11 +56,13 @@ export async function updateTeamSubscription(
 }
 
 export async function getUserWithTeam(userId: number) {
-  const teamMember = await prisma.teamMember.findFirst({
-    where: { userId },
-    select: { teamId: true }
-  });
-  const user = await prisma.user.findUnique({ where: { id: userId } });
+  const [teamMember, user] = await Promise.all([
+    prisma.teamMember.findFirst({
+      where: { userId },
+      select: { teamId: true }
+    }),
+    prisma.user.findUnique({ where: { id: userId } })
+  ]);
   return user ? { user, teamId: teamMember?.teamId ?? null } : null;
 }
 

@@ -44,10 +44,11 @@ export function ProjectShell({
           onSidebarOpenChange={setIsSidebarOpen}
         />
         <main className="flex-1 overflow-y-auto px-4 py-4 lg:px-6 lg:py-6">
-          <div className="mx-auto w-full max-w-[1400px]">{children}</div>
+          <div className="mx-auto flex h-full min-h-0 w-full max-w-[1400px] flex-col">
+            {children}
+          </div>
         </main>
       </div>
     </div>
   );
 }
-

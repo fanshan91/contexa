@@ -15,6 +15,16 @@ enum TranslationStatus {
   approved
 }
 
+enum GlossaryTermType {
+  recommended
+  forced
+}
+
+enum GlossaryItemStatus {
+  enabled
+  disabled
+}
+
 model SystemMeta {
   key         String   @id
   value       String
@@ -41,6 +51,11 @@ model User {
   projectsCreated   Project[]        @relation("ProjectCreatedBy")
   projectInvitationsSent ProjectInvitation[] @relation("ProjectInvitationInvitedBy")
   localePreferences UserProjectLocalePreference[]
+
+  glossaryTermsCreated ProjectGlossaryTerm[] @relation("GlossaryTermCreatedBy")
+  glossaryTermsUpdated ProjectGlossaryTerm[] @relation("GlossaryTermUpdatedBy")
+  negativePromptsCreated ProjectNegativePrompt[] @relation("NegativePromptCreatedBy")
+  negativePromptsUpdated ProjectNegativePrompt[] @relation("NegativePromptUpdatedBy")
 }
 
 model Team {
@@ -119,6 +134,8 @@ model Project {
   createdBy   User?    @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id])
   invitations ProjectInvitation[]
   localePreferences UserProjectLocalePreference[]
+  glossaryTerms ProjectGlossaryTerm[]
+  negativePrompts ProjectNegativePrompt[]
 
   @@unique([name])
 }
@@ -223,6 +240,7 @@ model Page {
   projectId Int
   route     String
   title     String?
+  description String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -238,6 +256,7 @@ model Module {
   id        Int      @id @default(autoincrement())
   pageId    Int
   name      String
+  description String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -274,4 +293,49 @@ model TranslationPageLock {
   user    User    @relation(fields: [userId], references: [id])
 
   @@index([projectId, pageId, locale])
+}
+
+model ProjectGlossaryTerm {
+  id              Int              @id @default(autoincrement())
+  projectId        Int
+  locale           String
+  source           String
+  target           String
+  type             GlossaryTermType   @default(recommended)
+  status           GlossaryItemStatus @default(enabled)
+  note             String?
+  createdByUserId  Int?
+  updatedByUserId  Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id])
+  createdBy User?   @relation("GlossaryTermCreatedBy", fields: [createdByUserId], references: [id])
+  updatedBy User?   @relation("GlossaryTermUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  @@unique([projectId, locale, source])
+  @@index([projectId, locale])
+  @@index([projectId, locale, status])
+}
+
+model ProjectNegativePrompt {
+  id              Int              @id @default(autoincrement())
+  projectId        Int
+  locale           String
+  phrase           String
+  alternative      String?
+  note             String?
+  status           GlossaryItemStatus @default(enabled)
+  createdByUserId  Int?
+  updatedByUserId  Int?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id])
+  createdBy User?   @relation("NegativePromptCreatedBy", fields: [createdByUserId], references: [id])
+  updatedBy User?   @relation("NegativePromptUpdatedBy", fields: [updatedByUserId], references: [id])
+
+  @@unique([projectId, locale, phrase])
+  @@index([projectId, locale])
+  @@index([projectId, locale, status])
 }

@@ -3,8 +3,10 @@
 import { useActionState, useMemo, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { ActionState } from '@/lib/auth/middleware';
+import { ProjectRoles } from '@/lib/auth/project-permissions';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Select } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { FormError } from '@/components/form-error';
 import { addProjectMemberAction, removeProjectMemberAction, updateProjectMemberAction } from '../actions';
@@ -33,14 +35,28 @@ type UserOption = {
   name: string | null;
 };
 
+type ProjectRoleValue = (typeof ProjectRoles)[keyof typeof ProjectRoles];
+
+function normalizeProjectRole(role: string): ProjectRoleValue {
+  if (role === 'developer') return ProjectRoles.internal;
+  if (role === ProjectRoles.admin) return ProjectRoles.admin;
+  if (role === ProjectRoles.internal) return ProjectRoles.internal;
+  if (role === ProjectRoles.translator) return ProjectRoles.translator;
+  return ProjectRoles.internal;
+}
+
+function getUserLabel(user: UserOption) {
+  return user.name ? user.name : user.email;
+}
+
 function RoleSelect({
   value,
   onChange,
   disabled,
   canManageAdmins
 }: {
-  value: string;
-  onChange: (next: string) => void;
+  value: ProjectRoleValue;
+  onChange: (next: ProjectRoleValue) => void;
   disabled: boolean;
   canManageAdmins: boolean;
 }) {
@@ -49,29 +65,29 @@ function RoleSelect({
   const options = useMemo(
     () =>
       [
-        { value: 'developer', label: t('developer') },
-        { value: 'translator', label: t('translator') },
-        ...(canManageAdmins ? [{ value: 'admin', label: t('admin') }] : [])
+        { value: ProjectRoles.internal, label: t('internal') },
+        { value: ProjectRoles.translator, label: t('translator') },
+        ...(canManageAdmins ? [{ value: ProjectRoles.admin, label: t('admin') }] : [])
       ] as const,
     [canManageAdmins, t]
   );
 
+  const mergedOptions = useMemo(() => {
+    const base = [...options] as Array<{ value: ProjectRoleValue; label: string; disabled?: boolean }>;
+    if (!canManageAdmins && value === ProjectRoles.admin) {
+      base.push({ value: ProjectRoles.admin, label: t('admin'), disabled: true });
+    }
+    return base;
+  }, [canManageAdmins, options, t, value]);
+
   return (
-    <select
+    <Select
       value={value}
-      onChange={(e) => onChange(e.target.value)}
+      onValueChange={(next) => onChange(next as ProjectRoleValue)}
       disabled={disabled}
-      className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
-    >
-      {options.map((opt) => (
-        <option key={opt.value} value={opt.value}>
-          {opt.label}
-        </option>
-      ))}
-      {!canManageAdmins && value === 'admin' ? (
-        <option value="admin">{t('admin')}</option>
-      ) : null}
-    </select>
+      className="h-9 w-[180px]"
+      options={mergedOptions}
+    />
   );
 }
 
@@ -89,7 +105,7 @@ function MemberRow({
   creatorId: number | null;
 }) {
   const t = useTranslations('projectSettingsMembers');
-  const [role, setRole] = useState(row.role);
+  const [role, setRole] = useState<ProjectRoleValue>(() => normalizeProjectRole(row.role));
   const [canReview, setCanReview] = useState(row.canReview);
   const [updateState, updateAction, updating] = useActionState<ActionState, FormData>(
     updateProjectMemberAction,
@@ -101,7 +117,8 @@ function MemberRow({
   );
 
   const isCreator = creatorId ? row.userId === creatorId : false;
-  const roleEditingDisabled = !canManageMembers || (!canManageAdmins && row.role === 'admin');
+  const roleEditingDisabled =
+    !canManageMembers || (!canManageAdmins && normalizeProjectRole(row.role) === ProjectRoles.admin);
   const removeDisabled = !canManageMembers || isCreator;
 
   return (
@@ -132,23 +149,24 @@ function MemberRow({
               value={role}
               onChange={(next) => {
                 setRole(next);
-                if (next !== 'translator') setCanReview(false);
+                setCanReview(next === ProjectRoles.translator ? true : false);
               }}
               disabled={roleEditingDisabled}
               canManageAdmins={canManageAdmins}
             />
           </div>
 
-          <label className="flex items-center gap-2 text-sm text-foreground">
-            <input
-              type="checkbox"
-              name="canReview"
-              checked={canReview}
-              onChange={(e) => setCanReview(e.target.checked)}
-              disabled={!canManageMembers || role !== 'translator'}
-            />
-            {t('canReview')}
-          </label>
+          {role === ProjectRoles.translator ? (
+            <div className="flex items-center gap-2 text-sm text-foreground">
+              <Checkbox
+                checked={canReview}
+                onCheckedChange={(next: boolean | 'indeterminate') => setCanReview(Boolean(next))}
+                disabled={!canManageMembers}
+              />
+              <span>{t('canReview')}</span>
+              {canReview ? <input type="hidden" name="canReview" value="on" /> : null}
+            </div>
+          ) : null}
 
           <Button type="submit" disabled={updating || roleEditingDisabled}>
             {updating ? t('saving') : t('save')}
@@ -192,7 +210,14 @@ export function ProjectMembersManager({
 }) {
   const t = useTranslations('projectSettingsMembers');
   const tr = useTranslations('projectRoles');
-  const [newRole, setNewRole] = useState('developer');
+  const memberUserIds = useMemo(() => new Set(members.map((m) => m.userId)), [members]);
+  const availableUsers = useMemo(
+    () => allUsers.filter((u) => !memberUserIds.has(u.id)),
+    [allUsers, memberUserIds]
+  );
+
+  const [newUserId, setNewUserId] = useState(() => availableUsers[0]?.id?.toString() ?? '');
+  const [newRole, setNewRole] = useState<ProjectRoleValue>(ProjectRoles.internal);
   const [newCanReview, setNewCanReview] = useState(false);
   const [addState, addAction, adding] = useActionState<ActionState, FormData>(
     addProjectMemberAction,
@@ -207,29 +232,23 @@ export function ProjectMembersManager({
 
         <form className="mt-4 space-y-4" action={addAction}>
           <input type="hidden" name="projectId" value={projectId} />
+          <input type="hidden" name="userId" value={newUserId} />
 
           <div>
-            <Label htmlFor="email">{t('email')}</Label>
+            <Label htmlFor="project-member-user">{t('user')}</Label>
             <div className="mt-1">
-              <Input
-                id="email"
-                name="email"
-                type="email"
-                defaultValue={addState.email ?? ''}
-                required
-                maxLength={200}
-                disabled={!canManageMembers}
-                list="project-member-email-options"
-                className="h-10"
-                placeholder={t('emailPlaceholder')}
+              <Select
+                id="project-member-user"
+                value={newUserId}
+                onValueChange={setNewUserId}
+                disabled={!canManageMembers || availableUsers.length === 0}
+                placeholder={t('userPlaceholder')}
+                className="h-10 w-[290px]"
+                options={availableUsers.map((u) => ({
+                  value: u.id.toString(),
+                  label: getUserLabel(u)
+                }))}
               />
-              <datalist id="project-member-email-options">
-                {allUsers.map((u) => (
-                  <option key={u.id} value={u.email}>
-                    {u.name ? `${u.name} <${u.email}>` : u.email}
-                  </option>
-                ))}
-              </datalist>
             </div>
           </div>
 
@@ -240,7 +259,7 @@ export function ProjectMembersManager({
                 value={newRole}
                 onChange={(next) => {
                   setNewRole(next);
-                  if (next !== 'translator') setNewCanReview(false);
+                  setNewCanReview(next === ProjectRoles.translator ? true : false);
                 }}
                 disabled={!canManageMembers}
                 canManageAdmins={canManageAdmins}
@@ -248,18 +267,22 @@ export function ProjectMembersManager({
               <input type="hidden" name="role" value={newRole} />
             </div>
 
-            <label className="flex items-center gap-2 text-sm text-foreground">
-              <input
-                type="checkbox"
-                name="canReview"
-                checked={newCanReview}
-                onChange={(e) => setNewCanReview(e.target.checked)}
-                disabled={!canManageMembers || newRole !== 'translator'}
-              />
-              {t('canReview')}
-            </label>
+            {newRole === ProjectRoles.translator ? (
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <Checkbox
+                  checked={newCanReview}
+                  onCheckedChange={(next: boolean | 'indeterminate') => setNewCanReview(Boolean(next))}
+                  disabled={!canManageMembers}
+                />
+                <span>{t('canReview')}</span>
+                {newCanReview ? <input type="hidden" name="canReview" value="on" /> : null}
+              </div>
+            ) : null}
 
-            <Button type="submit" disabled={adding || !canManageMembers}>
+            <Button
+              type="submit"
+              disabled={adding || !canManageMembers || availableUsers.length === 0 || !newUserId}
+            >
               {adding ? t('adding') : t('add')}
             </Button>
           </div>
@@ -303,12 +326,12 @@ export function ProjectMembersManager({
                   <div className="font-medium text-foreground truncate">{inv.email}</div>
                   <div className="mt-1 text-muted-foreground">
                     {t('invitedAs')}：
-                    {inv.role === 'admin'
+                    {normalizeProjectRole(inv.role) === ProjectRoles.admin
                       ? tr('admin')
-                      : inv.role === 'translator'
+                      : normalizeProjectRole(inv.role) === ProjectRoles.translator
                         ? tr('translator')
-                        : tr('developer')}
-                    {inv.role === 'translator' ? (
+                        : tr('internal')}
+                    {normalizeProjectRole(inv.role) === ProjectRoles.translator ? (
                       <span className="ml-2">
                         {t('canReview')}：{inv.canReview ? t('yes') : t('no')}
                       </span>

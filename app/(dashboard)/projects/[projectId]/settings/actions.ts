@@ -4,6 +4,10 @@ import { z } from 'zod';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { validatedActionWithProject } from '@/lib/auth/middleware';
+import {
+  createProjectPermissionChecker,
+  ProjectRoles
+} from '@/lib/auth/project-permissions';
 import { prisma } from '@/lib/db/prisma';
 
 const projectIdSchema = z.coerce.number().int().positive();
@@ -42,9 +46,8 @@ export const updateProjectBasicAction = validatedActionWithProject(
   async (data, _, user) => {
     const t = await getTranslations('projectSettings');
     const member = await getMember(data.projectId, user.id);
-    if (!member || member.role !== 'admin') {
-      return { error: t('noPermission') };
-    }
+    const { can } = createProjectPermissionChecker({ user, member });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
 
     await prisma.project.update({
       where: { id: data.projectId },
@@ -68,9 +71,8 @@ export const addProjectLocalesAction = validatedActionWithProject(
   async (data, _, user) => {
     const t = await getTranslations('projectSettings');
     const member = await getMember(data.projectId, user.id);
-    if (!member || member.role !== 'admin') {
-      return { error: t('noPermission') };
-    }
+    const { can } = createProjectPermissionChecker({ user, member });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
 
     const project = await prisma.project.findUnique({
       where: { id: data.projectId },
@@ -118,9 +120,8 @@ export const updateProjectQualityAction = validatedActionWithProject(
   async (data, _, user) => {
     const t = await getTranslations('projectSettings');
     const member = await getMember(data.projectId, user.id);
-    if (!member || member.role !== 'admin') {
-      return { error: t('noPermission') };
-    }
+    const { can } = createProjectPermissionChecker({ user, member });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
 
     await prisma.project.update({
       where: { id: data.projectId },
@@ -198,8 +199,8 @@ export const saveProjectLocalePreferencesAction = validatedActionWithProject(
 
 const addMemberSchema = z.object({
   projectId: projectIdSchema,
-  email: z.string().email().max(200),
-  role: z.string().min(1).max(20),
+  userId: z.coerce.number().int().positive(),
+  role: z.enum([ProjectRoles.internal, ProjectRoles.translator, ProjectRoles.admin]),
   canReview: z.string().optional()
 });
 
@@ -217,21 +218,25 @@ export const addProjectMemberAction = validatedActionWithProject(
     }
 
     const member = await getMember(data.projectId, user.id);
-    if (!user.isSystemAdmin && (!member || member.role !== 'admin')) {
-      return { error: t('noPermission') };
+    const creatorId = await getCreatorId(data.projectId);
+    const { can } = createProjectPermissionChecker({ user, member, creatorId });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: { id: true, isSystemAdmin: true, deletedAt: true }
+    });
+    if (!targetUser || targetUser.deletedAt) {
+      return { error: t('userNotFound') };
+    }
+    if (targetUser.isSystemAdmin) {
+      return { error: t('cannotAddSystemAdmin') };
     }
 
-    const normalizedEmail = data.email.trim().toLowerCase();
-    const existingUser = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-      select: { id: true }
-    });
-
-    const creatorId = await getCreatorId(data.projectId);
     const nextRole = data.role;
 
     if (nextRole === 'admin') {
-      if (!creatorId || user.id !== creatorId) {
+      if (!can(['creator'])) {
         return { error: t('onlyCreatorCanManageAdmins') };
       }
       const adminCount = await prisma.projectMember.count({
@@ -244,24 +249,8 @@ export const addProjectMemberAction = validatedActionWithProject(
 
     const canReview = nextRole === 'translator' ? data.canReview === 'on' : false;
 
-    if (!existingUser) {
-      await prisma.projectInvitation.upsert({
-        where: { projectId_email: { projectId: data.projectId, email: normalizedEmail } },
-        update: { role: nextRole, canReview, invitedBy: user.id, status: 'pending' },
-        create: {
-          projectId: data.projectId,
-          email: normalizedEmail,
-          role: nextRole,
-          canReview,
-          invitedBy: user.id
-        }
-      });
-
-      redirect(`/projects/${data.projectId}/settings/members`);
-    }
-
     const existingMember = await prisma.projectMember.findUnique({
-      where: { projectId_userId: { projectId: data.projectId, userId: existingUser.id } },
+      where: { projectId_userId: { projectId: data.projectId, userId: targetUser.id } },
       select: { id: true }
     });
     if (existingMember) {
@@ -271,7 +260,7 @@ export const addProjectMemberAction = validatedActionWithProject(
     await prisma.projectMember.create({
       data: {
         projectId: data.projectId,
-        userId: existingUser.id,
+        userId: targetUser.id,
         role: nextRole,
         canReview
       }
@@ -294,9 +283,9 @@ export const updateProjectMemberAction = validatedActionWithProject(
     const t = await getTranslations('projectSettings');
 
     const member = await getMember(data.projectId, user.id);
-    if (!user.isSystemAdmin && (!member || member.role !== 'admin')) {
-      return { error: t('noPermission') };
-    }
+    const creatorId = await getCreatorId(data.projectId);
+    const { can } = createProjectPermissionChecker({ user, member, creatorId });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
 
     const target = await prisma.projectMember.findUnique({
       where: { projectId_userId: { projectId: data.projectId, userId: data.userId } }
@@ -305,14 +294,13 @@ export const updateProjectMemberAction = validatedActionWithProject(
       return { error: t('memberNotFound') };
     }
 
-    const creatorId = await getCreatorId(data.projectId);
     const nextRole = data.role;
     const roleChangedAcrossAdmin =
       (target.role === 'admin' && nextRole !== 'admin') ||
       (target.role !== 'admin' && nextRole === 'admin');
 
     if (roleChangedAcrossAdmin) {
-      if (!creatorId || user.id !== creatorId) {
+      if (!can(['creator'])) {
         return { error: t('onlyCreatorCanManageAdmins') };
       }
     }
@@ -328,14 +316,6 @@ export const updateProjectMemberAction = validatedActionWithProject(
       if (adminCount >= 3) {
         return { error: t('adminLimitReached') };
       }
-    }
-
-    if (user.isSystemAdmin && !creatorId) {
-      return { error: t('creatorNotSet') };
-    }
-
-    if (user.isSystemAdmin && nextRole === 'admin' && user.id !== creatorId) {
-      return { error: t('onlyCreatorCanManageAdmins') };
     }
 
     const canReview = nextRole === 'translator' ? data.canReview === 'on' : false;
@@ -360,11 +340,9 @@ export const removeProjectMemberAction = validatedActionWithProject(
     const t = await getTranslations('projectSettings');
 
     const member = await getMember(data.projectId, user.id);
-    if (!user.isSystemAdmin && (!member || member.role !== 'admin')) {
-      return { error: t('noPermission') };
-    }
-
     const creatorId = await getCreatorId(data.projectId);
+    const { can } = createProjectPermissionChecker({ user, member, creatorId });
+    if (!can([ProjectRoles.admin])) return { error: t('noPermission') };
     if (creatorId && data.userId === creatorId) {
       return { error: t('cannotRemoveCreator') };
     }
@@ -393,3 +371,102 @@ export const removeProjectMemberAction = validatedActionWithProject(
   }
 );
 
+const deleteProjectSchema = z.object({
+  projectId: projectIdSchema,
+  confirmName: z
+    .string()
+    .min(1, 'validations.projectNameRequired')
+    .max(100, 'validations.projectNameMax')
+});
+
+export const deleteProjectAction = validatedActionWithProject(
+  deleteProjectSchema,
+  async (data, _, user) => {
+    const t = await getTranslations('projectSettings');
+
+    const project = await prisma.project.findUnique({
+      where: { id: data.projectId },
+      select: { id: true, name: true }
+    });
+    if (!project) {
+      return { error: t('projectNotFound') };
+    }
+
+    if (data.confirmName !== project.name) {
+      return { error: t('deleteProjectNameMismatch') };
+    }
+
+    const creatorId = await getCreatorId(data.projectId);
+    const { can } = createProjectPermissionChecker({
+      user,
+      member: null,
+      creatorId
+    });
+    if (!user.isSystemAdmin && !creatorId) return { error: t('creatorNotSet') };
+    if (!can(['creator'])) return { error: t('deleteProjectOnlyCreator') };
+
+    try {
+      await prisma.$transaction(async (tx) => {
+        const pages = await tx.page.findMany({
+          where: { projectId: data.projectId },
+          select: { id: true }
+        });
+        const pageIds = pages.map((p) => p.id);
+
+        await tx.translationPageLock.deleteMany({
+          where: { projectId: data.projectId }
+        });
+
+        if (pageIds.length > 0) {
+          await tx.entryPlacement.deleteMany({
+            where: { pageId: { in: pageIds } }
+          });
+          await tx.module.deleteMany({
+            where: { pageId: { in: pageIds } }
+          });
+          await tx.page.deleteMany({
+            where: { id: { in: pageIds } }
+          });
+        } else {
+          await tx.page.deleteMany({
+            where: { projectId: data.projectId }
+          });
+        }
+
+        await tx.translation.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.entry.deleteMany({
+          where: { projectId: data.projectId }
+        });
+
+        await tx.projectGlossaryTerm.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.projectNegativePrompt.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.userProjectLocalePreference.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.projectInvitation.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.projectMember.deleteMany({
+          where: { projectId: data.projectId }
+        });
+        await tx.projectLocale.deleteMany({
+          where: { projectId: data.projectId }
+        });
+
+        await tx.project.delete({
+          where: { id: data.projectId }
+        });
+      });
+    } catch {
+      return { error: t('deleteProjectFailed') };
+    }
+
+    redirect('/dashboard');
+  }
+);

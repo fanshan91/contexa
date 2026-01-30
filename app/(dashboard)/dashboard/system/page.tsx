@@ -1,5 +1,5 @@
 import Link from 'next/link';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { requireUser } from '@/lib/auth/guards';
 import { prisma } from '@/lib/db/prisma';
@@ -22,13 +22,11 @@ export default async function SystemSettingsPage() {
         <h1 className="text-xl font-semibold text-foreground lg:text-2xl">{t('title')}</h1>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-base">{t('title')}</CardTitle>
-          <CardDescription>
-            {enhancedStatus.connected ? t('connectedDesc') : t('disconnectedDesc')}
-          </CardDescription>
-          <CardAction className="flex items-center gap-2">
+      <Card
+        title={<span className="text-base">{t('title')}</span>}
+        description={enhancedStatus.connected ? t('connectedDesc') : t('disconnectedDesc')}
+        action={
+          <div className="flex items-center gap-2">
             {user.isSystemAdmin ? (
               enhancedStatus.connected ? (
                 <Button asChild>
@@ -49,17 +47,17 @@ export default async function SystemSettingsPage() {
                 </Button>
               )
             ) : null}
-          </CardAction>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-1 text-sm text-muted-foreground">
-          <div>
-            {t('connection')}：
-            {enhancedStatus.connected ? t('connectionConnected') : t('connectionDisconnected')}
           </div>
-          <div>
-            {t('licenseStatus')}：{t('licenseUnknown')}
-          </div>
-        </CardContent>
+        }
+        contentClassName="flex flex-col gap-1 text-sm text-muted-foreground"
+      >
+        <div>
+          {t('connection')}：
+          {enhancedStatus.connected ? t('connectionConnected') : t('connectionDisconnected')}
+        </div>
+        <div>
+          {t('licenseStatus')}：{t('licenseUnknown')}
+        </div>
       </Card>
     </div>
   );

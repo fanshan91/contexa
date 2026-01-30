@@ -9,13 +9,7 @@ import { createProject } from '../actions';
 import { ActionState } from '@/lib/auth/middleware';
 import { useTranslations } from 'next-intl';
 import { LocaleSelect } from '@/components/locale-select';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import { ChevronDownIcon } from 'lucide-react';
 
 export function NewProjectForm() {
@@ -82,15 +76,15 @@ export function NewProjectForm() {
         <div>
           <Label htmlFor="translationAdapter">{t('adapterLabel')}</Label>
           <div className="mt-1">
-            <DropdownMenu>
-              <input
-                id="translationAdapter"
-                name="translationAdapter"
-                type="hidden"
-                value={adapter}
-                required
-              />
-              <DropdownMenuTrigger asChild>
+            <input
+              id="translationAdapter"
+              name="translationAdapter"
+              type="hidden"
+              value={adapter}
+              required
+            />
+            <DropdownMenu
+              trigger={
                 <Button
                   type="button"
                   variant="outline"
@@ -99,20 +93,24 @@ export function NewProjectForm() {
                   <span className="truncate">{adapterLabel}</span>
                   <ChevronDownIcon className="size-4 opacity-60" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="start"
-                style={{ width: 'var(--radix-popper-anchor-width)' }}
-              >
-                <DropdownMenuRadioGroup value={adapter} onValueChange={setAdapter}>
-                  {adapterOptions.map((opt) => (
-                    <DropdownMenuRadioItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </DropdownMenuRadioItem>
-                  ))}
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              }
+              contentProps={{
+                align: 'start',
+                style: { width: 'var(--radix-popper-anchor-width)' }
+              }}
+              items={[
+                {
+                  type: 'radio-group',
+                  value: adapter,
+                  onValueChange: setAdapter,
+                  items: adapterOptions.map((opt) => ({
+                    key: opt.value,
+                    value: opt.value,
+                    label: opt.label
+                  }))
+                }
+              ]}
+            />
           </div>
         </div>
 

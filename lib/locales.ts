@@ -32,3 +32,11 @@ export const projectLocaleOptions: ProjectLocaleOption[] = [
   { value: 'uk', label: 'Українська (uk)' },
   { value: 'he', label: 'עברית (he)' }
 ];
+
+const projectLocaleLabelByValue = new Map(projectLocaleOptions.map((opt) => [opt.value, opt.label]));
+
+export function getProjectLocaleLabel(locale: string) {
+  const code = locale.trim();
+  if (!code) return '';
+  return projectLocaleLabelByValue.get(code) ?? code;
+}

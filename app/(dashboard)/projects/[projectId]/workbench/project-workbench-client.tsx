@@ -20,18 +20,9 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card-primitives';
 import { Input } from '@/components/ui/input';
-import {
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuRadioGroup,
-  DropdownMenuRadioItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger
-} from '@/components/ui/dropdown-menu';
+import { DropdownMenu } from '@/components/ui/dropdown-menu';
 import {
   Dialog,
   DialogContent,
@@ -39,8 +30,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle
-} from '@/components/ui/dialog';
+} from '@/components/ui/dialog-primitives';
 import { useToast } from '@/components/ui/toast';
+import { TargetLocaleSelect } from '@/components/target-locale-select';
 
 type TargetLocale = {
   code: string;
@@ -797,31 +789,16 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
           <CardContent className="pt-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex flex-wrap items-center gap-2">
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="h-9">
-                      <span className="text-sm text-muted-foreground">{t('filters.targetLocale')}：</span>
-                      <span className="ml-1 text-sm font-medium text-foreground">
-                        {locale || t('filters.targetLocaleEmpty')}
-                      </span>
-                      <ChevronDown className="ml-2 size-4 text-muted-foreground" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" className="min-w-[220px]">
-                    <DropdownMenuLabel>{t('filters.chooseLocale')}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuRadioGroup value={locale} onValueChange={(v) => setLocale(v)}>
-                      {targetLocales.map((l) => (
-                        <DropdownMenuRadioItem key={l.code} value={l.code}>
-                          <span className="flex w-full items-center justify-between gap-3">
-                            <span className="text-foreground">{l.label}</span>
-                            <span className="text-xs text-muted-foreground">{l.code}</span>
-                          </span>
-                        </DropdownMenuRadioItem>
-                      ))}
-                    </DropdownMenuRadioGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">{t('filters.targetLocale')}：</span>
+                  <TargetLocaleSelect
+                    targetLocales={targetLocales.map((l) => l.code)}
+                    value={locale}
+                    onValueChange={setLocale}
+                    placeholder={t('filters.targetLocaleEmpty')}
+                    className="h-9 min-w-[220px]"
+                  />
+                </div>
 
                 <div className="hidden h-5 w-px bg-border lg:block" />
 
@@ -845,36 +822,34 @@ export function ProjectWorkbenchClient({ projectId }: { projectId: number }) {
                   />
                 </div>
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                <DropdownMenu
+                  trigger={
                     <Button variant="outline" className="h-9">
                       {t('filters.status')}
                       <ChevronDown className="ml-2 size-4 text-muted-foreground" />
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="min-w-[220px]">
-                    <DropdownMenuLabel>{t('filters.status')}</DropdownMenuLabel>
-                    <DropdownMenuSeparator />
-                    {(
+                  }
+                  contentProps={{ align: 'end', className: 'min-w-[220px]' }}
+                  items={[
+                    { type: 'label', label: t('filters.status') },
+                    { type: 'separator' },
+                    ...(
                       [
                         ['untranslated', t('status.untranslated')],
                         ['pending_review', t('status.pendingReview')],
                         ['updated', t('status.updated')],
                         ['approved', t('status.approved')]
                       ] as const
-                    ).map(([k, label]) => (
-                      <DropdownMenuCheckboxItem
-                        key={k}
-                        checked={statusFilter[k]}
-                        onCheckedChange={(checked) =>
-                          setStatusFilter((prev) => ({ ...prev, [k]: Boolean(checked) }))
-                        }
-                      >
-                        {label}
-                      </DropdownMenuCheckboxItem>
-                    ))}
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    ).map(([k, label]) => ({
+                      type: 'checkbox' as const,
+                      key: k,
+                      checked: statusFilter[k],
+                      onCheckedChange: (checked: boolean | 'indeterminate') =>
+                        setStatusFilter((prev) => ({ ...prev, [k]: Boolean(checked) })),
+                      label
+                    }))
+                  ]}
+                />
 
                 <div className="hidden h-5 w-px bg-border lg:block" />
 

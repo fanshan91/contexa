@@ -1,6 +1,13 @@
 'use client';
 
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+  type ReactNode,
+} from 'react';
 
 type ToastVariant = 'default' | 'destructive';
 
@@ -26,7 +33,7 @@ function randomId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-export function ToastProvider({ children }: { children: React.ReactNode }) {
+export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const push = useCallback((toast: ToastInput) => {
@@ -78,3 +85,4 @@ export function useToast() {
   }
   return ctx;
 }
+

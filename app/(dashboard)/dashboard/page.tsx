@@ -1,13 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { requireUser } from '@/lib/auth/guards';
 import { prisma } from '@/lib/db/prisma';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -69,25 +62,21 @@ export default async function DashboardProjectsPage() {
       </div>
 
       {projects.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              {user.isSystemAdmin
-                ? t('emptyTitleSystemAdmin')
-                : t('emptyTitleMember')}
-            </CardTitle>
-            <CardDescription>
-              {user.isSystemAdmin ? t('emptyDescSystemAdmin') : t('emptyDescMember')}
-            </CardDescription>
-            {user.isSystemAdmin ? (
-              <CardAction>
-                <Button asChild>
-                  <Link href="/projects/new">{t('createProject')}</Link>
-                </Button>
-              </CardAction>
-            ) : null}
-          </CardHeader>
-        </Card>
+        <Card
+          title={
+            <span className="text-base">
+              {user.isSystemAdmin ? t('emptyTitleSystemAdmin') : t('emptyTitleMember')}
+            </span>
+          }
+          description={user.isSystemAdmin ? t('emptyDescSystemAdmin') : t('emptyDescMember')}
+          action={
+            user.isSystemAdmin ? (
+              <Button asChild>
+                <Link href="/projects/new">{t('createProject')}</Link>
+              </Button>
+            ) : undefined
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
           {projects.map((p) => (
@@ -96,8 +85,10 @@ export default async function DashboardProjectsPage() {
               href={`/projects/${p.id}`}
               className="group block cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
-              <Card className="h-full transition-colors group-hover:bg-muted/30 group-hover:shadow-sm">
-                <CardContent className="flex min-h-40 flex-col p-4">
+              <Card
+                className="h-full transition-colors group-hover:bg-muted/30 group-hover:shadow-sm"
+                contentClassName="flex min-h-40 flex-col p-4"
+              >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium text-foreground group-hover:underline">
@@ -130,7 +121,6 @@ export default async function DashboardProjectsPage() {
                       </div>
                     </div>
                   </div>
-                </CardContent>
               </Card>
             </Link>
           ))}

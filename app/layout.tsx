@@ -1,8 +1,6 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Manrope } from 'next/font/google';
-import { getUser, getTeamForUser } from '@/lib/db/queries';
-import { SWRConfig } from 'swr';
 import { ToastProvider } from '@/components/ui/toast';
 import { NextIntlClientProvider } from 'next-intl';
 import { getLocale, getMessages } from 'next-intl/server';
@@ -34,19 +32,10 @@ export default async function RootLayout({
     >
       <body className="min-h-[100dvh]">
         <ToastProvider>
-          <SWRConfig
-            value={{
-              fallback: {
-                '/api/user': getUser(),
-                '/api/team': getTeamForUser()
-              }
-            }}
-          >
-            <NextIntlClientProvider locale={locale} messages={messages}>
-              <DeviceGuard />
-              {children}
-            </NextIntlClientProvider>
-          </SWRConfig>
+          <NextIntlClientProvider locale={locale} messages={messages}>
+            <DeviceGuard />
+            {children}
+          </NextIntlClientProvider>
         </ToastProvider>
       </body>
     </html>

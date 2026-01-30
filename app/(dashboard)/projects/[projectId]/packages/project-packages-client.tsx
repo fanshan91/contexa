@@ -1,9 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Loader2, Upload, Download, Plus, RefreshCcw, Eye, Pencil } from 'lucide-react';
-import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card-primitives';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,12 +15,21 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger
-} from '@/components/ui/dialog';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+} from '@/components/ui/dialog-primitives';
+import { RadioGroup } from '@/components/ui/radio-group';
+import { Pagination } from '@/components/ui/pagination';
+import { Table, type TableColumn } from '@/components/ui/table';
 import { useToast } from '@/components/ui/toast';
+import { TargetLocaleSelect } from '@/components/target-locale-select';
 import { cn } from '@/lib/utils';
+import {
+  importLanguagePackAction,
+  exportLanguagePackAction,
+  listPackagesEntriesQuery,
+  type PackagesEntry
+} from './actions';
 
-type TranslationStatus = 'untranslated' | 'pending_review' | 'approved' | 'has_update';
+type TranslationStatus = 'pending' | 'needs_update' | 'needs_review' | 'ready' | 'approved';
 
 type EntryTranslation = {
   text: string;
@@ -58,6 +67,8 @@ type UploadRecord = {
   ignoredKeys: string[];
 };
 
+type UpdatedKeyRow = { key: string; before: string; after: string };
+
 type DownloadMode = 'empty' | 'fallback' | 'filled';
 
 function randomId() {
@@ -77,6 +88,32 @@ function formatDateTime(ts: number) {
   } catch {
     return new Date(ts).toLocaleString();
   }
+}
+
+function toMs(iso: string) {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : Date.now();
+}
+
+function mapEntriesFromServer(items: PackagesEntry[], targetLocales: string[]) {
+  const out: Record<string, Entry> = {};
+  for (const it of items) {
+    const translations: Entry['translations'] = {};
+    for (const l of targetLocales) {
+      const tr = it.translations[l];
+      translations[l] = tr
+        ? { text: tr.text ?? '', status: tr.status, updatedAt: toMs(tr.updatedAt) }
+        : { text: '', status: 'pending', updatedAt: toMs(it.updatedAt) };
+    }
+    out[it.key] = {
+      key: it.key,
+      sourceText: it.sourceText,
+      createdAt: toMs(it.createdAt),
+      updatedAt: toMs(it.updatedAt),
+      translations
+    };
+  }
+  return out;
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -122,7 +159,7 @@ function buildMockEntries(sourceLocale: string, targetLocales: string[]) {
       sourceText: '登录',
       translations: {
         'en-US': { text: 'Sign in', status: 'approved' },
-        'ja-JP': { text: 'ログイン', status: 'pending_review' }
+        'ja-JP': { text: 'ログイン', status: 'needs_review' }
       }
     },
     {
@@ -137,7 +174,7 @@ function buildMockEntries(sourceLocale: string, targetLocales: string[]) {
       sourceText: '保存',
       translations: {
         'en-US': { text: 'Save', status: 'approved' },
-        'ja-JP': { text: '', status: 'untranslated' }
+        'ja-JP': { text: '', status: 'pending' }
       }
     },
     {
@@ -171,7 +208,7 @@ function buildMockEntries(sourceLocale: string, targetLocales: string[]) {
       const seeded = it.translations?.[l];
       translations[l] = seeded
         ? { text: seeded.text, status: seeded.status, updatedAt: now - 1000 * 60 * 60 * 12 }
-        : { text: '', status: 'untranslated', updatedAt: now - 1000 * 60 * 60 * 24 };
+        : { text: '', status: 'pending', updatedAt: now - 1000 * 60 * 60 * 24 };
     }
     map.set(it.key, {
       key: it.key,
@@ -192,9 +229,9 @@ function StatusPill({ status }: { status: TranslationStatus }) {
   const { label, cls } =
     status === 'approved'
       ? { label: '已审校', cls: 'border-success/30 text-success' }
-      : status === 'pending_review'
+      : status === 'needs_review' || status === 'ready'
         ? { label: '待审核', cls: 'border-warning/40 text-warning' }
-        : status === 'has_update'
+        : status === 'needs_update'
           ? { label: '有更新', cls: 'border-info/30 text-info' }
           : { label: '未翻译', cls: 'border-border text-muted-foreground' };
 
@@ -220,61 +257,44 @@ function selectClassName() {
 
 export function ProjectPackagesClient({
   projectId,
-  variant = 'entries'
+  variant = 'entries',
+  sourceLocale,
+  targetLocales,
+  templateShape,
+  canManage,
+  initialEntries,
+  bootstrapError,
+  entriesError
 }: {
   projectId: number;
   variant?: 'entries' | 'ops';
+  sourceLocale: string;
+  targetLocales: string[];
+  templateShape: 'flat' | 'tree';
+  canManage: boolean;
+  initialEntries: PackagesEntry[];
+  bootstrapError: string;
+  entriesError: string;
 }) {
   const { push } = useToast();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const mockProject = useMemo(
-    () => ({
-      sourceLocale: 'zh-CN',
-      targetLocales: ['en-US', 'ja-JP']
-    }),
-    []
-  );
-
   const allLocales = useMemo(
-    () => [mockProject.sourceLocale, ...mockProject.targetLocales],
-    [mockProject.sourceLocale, mockProject.targetLocales]
+    () => [sourceLocale, ...targetLocales],
+    [sourceLocale, targetLocales]
   );
 
-  const [selectedLocale, setSelectedLocale] = useState(mockProject.sourceLocale);
+  const [selectedLocale, setSelectedLocale] = useState(sourceLocale);
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [downloadLocale, setDownloadLocale] = useState(mockProject.sourceLocale);
+  const [downloadLocale, setDownloadLocale] = useState(sourceLocale);
   const [downloadMode, setDownloadMode] = useState<DownloadMode>('fallback');
   const [exportOpen, setExportOpen] = useState(false);
   const [entries, setEntries] = useState<Record<string, Entry>>(() =>
-    buildMockEntries(mockProject.sourceLocale, mockProject.targetLocales).entriesByKey
+    mapEntriesFromServer(initialEntries, targetLocales)
   );
-  const [history, setHistory] = useState<UploadRecord[]>(() => {
-    // Use fixed time for hydration consistency
-    const now = 1769334000000;
-    const rec: UploadRecord = {
-      id: 'mock-history-id-1',
-      createdAt: now - 1000 * 60 * 60 * 5,
-      locale: 'zh-CN',
-      operator: 'Victor',
-      summary: {
-        added: 3,
-        updated: 1,
-        missingInUpload: 0,
-        hasUpdate: 1,
-        pendingReview: 0,
-        ignored: 0
-      },
-      addedKeys: ['billing.invoiceTitle', 'billing.payNow', 'settings.language'],
-      updatedKeys: [{ key: 'auth.signIn', before: '登录', after: '登录/注册' }],
-      pendingReviewKeys: [],
-      hasUpdateKeys: ['auth.signIn'],
-      ignoredKeys: []
-    };
-    return [rec];
-  });
-  const [latestRecordId, setLatestRecordId] = useState<string | null>(() => history[0]?.id ?? null);
+  const [history, setHistory] = useState<UploadRecord[]>([]);
+  const [latestRecordId, setLatestRecordId] = useState<string | null>(null);
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailRecordId, setDetailRecordId] = useState<string | null>(null);
 
@@ -283,11 +303,12 @@ export function ProjectPackagesClient({
   const [createAutoKey, setCreateAutoKey] = useState(() => `ctx_${randomId().slice(0, 8)}`);
   const [createKey, setCreateKey] = useState('');
   const [createSourceText, setCreateSourceText] = useState('');
-  const [createTargetLocale, setCreateTargetLocale] = useState(mockProject.targetLocales[0] ?? mockProject.sourceLocale);
+  const [createTargetLocale, setCreateTargetLocale] = useState(targetLocales[0] ?? sourceLocale);
   const [createTargetText, setCreateTargetText] = useState('');
   const [createError, setCreateError] = useState<string | null>(null);
 
   const [query, setQuery] = useState('');
+  const [page, setPage] = useState(1);
   const [editOpen, setEditOpen] = useState(false);
   const [editKey, setEditKey] = useState<string | null>(null);
   const [editSourceText, setEditSourceText] = useState('');
@@ -304,11 +325,11 @@ export function ProjectPackagesClient({
     [history, detailRecordId]
   );
 
-  const isTargetLocale = selectedLocale !== mockProject.sourceLocale;
-  const canSelectTarget = mockProject.targetLocales.length > 0;
+  const isTargetLocale = selectedLocale !== sourceLocale;
+  const canSelectTarget = targetLocales.length > 0;
 
   const localeLabel = (l: string) => {
-    if (l === mockProject.sourceLocale) return `${l}（源语言）`;
+    if (l === sourceLocale) return `${l}（源语言）`;
     return l;
   };
 
@@ -322,7 +343,7 @@ export function ProjectPackagesClient({
     setCreateAutoKey(`ctx_${randomId().slice(0, 8)}`);
     setCreateKey('');
     setCreateSourceText('');
-    setCreateTargetLocale(mockProject.targetLocales[0] ?? mockProject.sourceLocale);
+    setCreateTargetLocale(targetLocales[0] ?? sourceLocale);
     setCreateTargetText('');
     setCreateError(null);
   };
@@ -336,14 +357,29 @@ export function ProjectPackagesClient({
       .filter((e) => {
         if (e.key.toLowerCase().includes(q)) return true;
         if (e.sourceText.toLowerCase().includes(q)) return true;
-        if (selectedLocale !== mockProject.sourceLocale) {
+        if (selectedLocale !== sourceLocale) {
           const tr = e.translations[selectedLocale];
           if (tr?.text?.toLowerCase().includes(q)) return true;
         }
         return false;
       })
       .sort((a, b) => a.key.localeCompare(b.key));
-  }, [entries, mockProject.sourceLocale, query, selectedLocale]);
+  }, [entries, query, selectedLocale, sourceLocale]);
+
+  const pageSize = 20;
+  const pageCount = Math.max(1, Math.ceil(filteredEntries.length / pageSize));
+  const pagedEntries = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredEntries.slice(start, start + pageSize);
+  }, [filteredEntries, page, pageSize]);
+
+  useEffect(() => {
+    setPage(1);
+  }, [query, selectedLocale]);
+
+  useEffect(() => {
+    if (page > pageCount) setPage(pageCount);
+  }, [page, pageCount]);
 
   const openEdit = (key: string) => {
     const entry = entries[key];
@@ -352,13 +388,205 @@ export function ProjectPackagesClient({
     setEditKey(key);
     setEditSourceText(entry.sourceText);
     setEditTargetText(
-      selectedLocale === mockProject.sourceLocale
+      selectedLocale === sourceLocale
         ? ''
         : entry.translations[selectedLocale]?.text ?? ''
     );
     setEditError(null);
     setEditOpen(true);
   };
+
+  const entryColumns = useMemo<Array<TableColumn<Entry>>>(
+    () => [
+      {
+        key: 'key',
+        title: 'Key',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top',
+        render: (_value: unknown, record: Entry) => (
+          <code className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground">
+            {record.key}
+          </code>
+        )
+      },
+      {
+        key: 'sourceText',
+        title: '源文案',
+        dataIndex: 'sourceText',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground',
+        render: (value: unknown) => (
+          <div className="max-w-[420px] break-words">{String(value ?? '')}</div>
+        )
+      },
+      {
+        key: 'currentLocale',
+        title: '当前语言',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground',
+        render: (_value: unknown, record: Entry) => {
+          const tr = selectedLocale === sourceLocale ? null : record.translations[selectedLocale];
+          const currentText =
+            selectedLocale === sourceLocale
+              ? record.sourceText
+              : tr?.text?.trim()
+                ? tr.text
+                : '';
+
+          return currentText ? (
+            <div className="max-w-[420px] break-words">{currentText}</div>
+          ) : (
+            <span className="text-muted-foreground">—</span>
+          );
+        }
+      },
+      {
+        key: 'status',
+        title: '状态',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top',
+        render: (_value: unknown, record: Entry) => {
+          const tr = selectedLocale === sourceLocale ? null : record.translations[selectedLocale];
+          if (selectedLocale === sourceLocale) {
+            return <span className="text-xs text-muted-foreground">源语言</span>;
+          }
+          return tr ? <StatusPill status={tr.status} /> : <StatusPill status="pending" />;
+        }
+      },
+      {
+        key: 'updatedAt',
+        title: '更新时间',
+        dataIndex: 'updatedAt',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-muted-foreground',
+        render: (value: unknown) => (
+          <span suppressHydrationWarning>{formatDateTime(Number(value))}</span>
+        )
+      },
+      {
+        key: 'actions',
+        title: '操作',
+        headerClassName: 'bg-card px-3 py-2 text-right font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-right',
+        align: 'right',
+        render: (_value: unknown, record: Entry) => (
+          <Button type="button" variant="outline" size="sm" onClick={() => openEdit(record.key)}>
+            <Pencil />
+            编辑
+          </Button>
+        )
+      }
+    ],
+    [openEdit, selectedLocale, sourceLocale]
+  );
+
+  const historyColumns = useMemo<Array<TableColumn<UploadRecord>>>(
+    () => [
+      {
+        key: 'createdAt',
+        title: '时间',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground',
+        render: (_value: unknown, record: UploadRecord) => (
+          <span suppressHydrationWarning>{formatDateTime(record.createdAt)}</span>
+        )
+      },
+      {
+        key: 'locale',
+        title: '语言',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top',
+        render: (_value: unknown, record: UploadRecord) => (
+          <div className="flex items-center gap-2">
+            <span className="text-foreground">{record.locale}</span>
+            {record.locale === sourceLocale ? (
+              <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
+                源
+              </span>
+            ) : null}
+          </div>
+        )
+      },
+      {
+        key: 'operator',
+        title: '操作者',
+        dataIndex: 'operator',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground'
+      },
+      {
+        key: 'summary',
+        title: '摘要',
+        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top',
+        render: (_value: unknown, record: UploadRecord) => (
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+              新增 {record.summary.added}
+            </span>
+            <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+              更新 {record.summary.updated}
+            </span>
+            {record.locale === sourceLocale ? (
+              <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+                有更新 {record.summary.hasUpdate}
+              </span>
+            ) : (
+              <span className="rounded-md border border-border bg-background px-2 py-0.5 text-xs text-foreground">
+                待审核 {record.summary.pendingReview}
+              </span>
+            )}
+          </div>
+        )
+      },
+      {
+        key: 'actions',
+        title: '操作',
+        headerClassName: 'bg-card px-3 py-2 text-right font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-right',
+        align: 'right',
+        render: (_value: unknown, record: UploadRecord) => (
+          <Button type="button" variant="outline" size="sm" onClick={() => openDetails(record.id)}>
+            查看
+          </Button>
+        )
+      }
+    ],
+    [openDetails, sourceLocale]
+  );
+
+  const updatedKeyColumns = useMemo<Array<TableColumn<UpdatedKeyRow>>>(
+    () => [
+      {
+        key: 'key',
+        title: 'Key',
+        headerClassName: 'bg-background px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top',
+        render: (_value: unknown, record: UpdatedKeyRow) => (
+          <code className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground">
+            {record.key}
+          </code>
+        )
+      },
+      {
+        key: 'before',
+        title: '之前',
+        dataIndex: 'before',
+        headerClassName: 'bg-background px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground',
+        render: (value: unknown) => String(value || '—')
+      },
+      {
+        key: 'after',
+        title: '之后',
+        dataIndex: 'after',
+        headerClassName: 'bg-background px-3 py-2 text-left font-medium text-muted-foreground',
+        cellClassName: 'px-3 py-2 align-top text-foreground',
+        render: (value: unknown) => String(value || '—')
+      }
+    ],
+    []
+  );
 
   const handleSaveEdit = () => {
     if (!editKey) return;
@@ -381,13 +609,13 @@ export function ProjectPackagesClient({
 
       if (sourceChanged) {
         const updatedTranslations: Entry['translations'] = { ...nextTranslations };
-        for (const tLocale of mockProject.targetLocales) {
+        for (const tLocale of targetLocales) {
           const tr = updatedTranslations[tLocale];
           if (!tr) continue;
           if (tr.text.trim().length > 0) {
             updatedTranslations[tLocale] = {
               ...tr,
-              status: 'has_update',
+              status: 'needs_update',
               updatedAt: now
             };
           }
@@ -395,16 +623,16 @@ export function ProjectPackagesClient({
         nextTranslations = updatedTranslations;
       }
 
-      if (selectedLocale !== mockProject.sourceLocale) {
+      if (selectedLocale !== sourceLocale) {
         const current = nextTranslations[selectedLocale] ?? {
           text: '',
-          status: 'untranslated' as const,
+          status: 'pending' as const,
           updatedAt: existing.updatedAt
         };
 
         const nextTr: EntryTranslation = {
           text: nextTargetText,
-          status: nextTargetText ? 'pending_review' : 'untranslated',
+          status: nextTargetText ? 'needs_review' : 'pending',
           updatedAt: now
         };
 
@@ -445,10 +673,10 @@ export function ProjectPackagesClient({
 
       if (!existing) {
         const translations: Entry['translations'] = {};
-        for (const tLocale of mockProject.targetLocales) {
+        for (const tLocale of targetLocales) {
           translations[tLocale] = {
             text: '',
-            status: 'untranslated',
+            status: 'pending',
             updatedAt: now
           };
         }
@@ -468,11 +696,11 @@ export function ProjectPackagesClient({
         const updatedTranslations: Entry['translations'] = { ...existing.translations };
 
         let changedAny = false;
-        for (const tLocale of mockProject.targetLocales) {
+        for (const tLocale of targetLocales) {
           const tr = updatedTranslations[tLocale];
           if (!tr) continue;
-          if (tr.text.trim().length > 0 && tr.status !== 'has_update') {
-            updatedTranslations[tLocale] = { ...tr, status: 'has_update', updatedAt: now };
+          if (tr.text.trim().length > 0 && tr.status !== 'needs_update') {
+            updatedTranslations[tLocale] = { ...tr, status: 'needs_update', updatedAt: now };
             changedAny = true;
           }
         }
@@ -501,7 +729,7 @@ export function ProjectPackagesClient({
     const record: UploadRecord = {
       id: randomId(),
       createdAt: now,
-      locale: mockProject.sourceLocale,
+      locale: sourceLocale,
       operator: 'Victor',
       summary,
       addedKeys,
@@ -535,7 +763,7 @@ export function ProjectPackagesClient({
 
       const currentTr = existing.translations[targetLocale] ?? {
         text: '',
-        status: 'untranslated' as const,
+        status: 'pending' as const,
         updatedAt: existing.updatedAt
       };
       const before = currentTr.text;
@@ -545,7 +773,7 @@ export function ProjectPackagesClient({
 
       const nextTr: EntryTranslation = {
         text: nextText,
-        status: 'pending_review',
+        status: 'needs_review',
         updatedAt: now
       };
 
@@ -604,75 +832,106 @@ export function ProjectPackagesClient({
       return;
     }
 
-    const parsed = parseFlatJsonMap(raw);
-    if (!parsed.ok) {
-      setUploadError(parsed.message);
-      push({ variant: 'destructive', title: '上传失败', message: parsed.message });
-      setUploadBusy(false);
-      return;
-    }
-
-    window.setTimeout(() => {
-      try {
-        const result =
-          selectedLocale === mockProject.sourceLocale
-            ? applySourceUpload(parsed.value)
-            : applyTargetUpload(parsed.value, selectedLocale);
-
-        const summary = result.record.summary;
-        const suffix =
-          selectedLocale === mockProject.sourceLocale
-            ? `新增 ${summary.added}，更新 ${summary.updated}，有更新 ${summary.hasUpdate}`
-            : `写入 ${summary.pendingReview}（待审核），忽略 ${summary.ignored}`;
-
-        push({ variant: 'default', title: '上传成功', message: suffix });
-        if (selectedLocale !== mockProject.sourceLocale && summary.ignored > 0) {
-          push({
-            variant: 'destructive',
-            title: '存在被忽略的 key',
-            message: '目标语言上传不允许新增 key；源语言中不存在的 key 已被忽略。'
-          });
-        }
-      } catch {
-        push({ variant: 'destructive', title: '上传失败', message: '处理文件时发生异常，请重试。' });
-      } finally {
-        setUploadBusy(false);
+    try {
+      if (!canManage) {
+        push({ variant: 'destructive', title: '无权限', message: '仅项目管理员/创建者可导入语言包。' });
+        return;
       }
-    }, 600);
+
+      const res = await importLanguagePackAction({
+        projectId,
+        locale: selectedLocale,
+        rawJson: raw
+      });
+      if (!res.ok) {
+        setUploadError(res.error);
+        push({ variant: 'destructive', title: '上传失败', message: res.error });
+        return;
+      }
+
+      const now = Date.now();
+      const nextSummary: UploadSummary =
+        res.data.kind === 'source'
+          ? {
+              added: res.data.summary.added,
+              updated: res.data.summary.updated,
+              missingInUpload: 0,
+              hasUpdate: res.data.summary.markedNeedsUpdate,
+              pendingReview: 0,
+              ignored: 0
+            }
+          : {
+              added: 0,
+              updated: (res.data.summary as { updated: number }).updated,
+              missingInUpload: 0,
+              hasUpdate: 0,
+              pendingReview: (res.data.summary as { updated: number }).updated,
+              ignored: (res.data.summary as { ignored: number }).ignored
+            };
+
+      const record: UploadRecord = {
+        id: randomId(),
+        createdAt: now,
+        locale: selectedLocale,
+        operator: '—',
+        summary: nextSummary,
+        addedKeys: [],
+        updatedKeys: [],
+        pendingReviewKeys: [],
+        hasUpdateKeys: [],
+        ignoredKeys: []
+      };
+      setHistory((prev) => [record, ...prev]);
+      setLatestRecordId(record.id);
+
+      const suffix =
+        res.data.kind === 'source'
+          ? `新增 ${nextSummary.added}，更新 ${nextSummary.updated}，标记需更新 ${nextSummary.hasUpdate}`
+          : `写入 ${nextSummary.pendingReview}（待审核），忽略 ${nextSummary.ignored}，跳过空值 ${(res.data.summary as { skippedEmpty: number }).skippedEmpty}`;
+
+      push({ variant: 'default', title: '上传成功', message: suffix });
+
+      const listRes = await listPackagesEntriesQuery(projectId);
+      if (listRes.ok) {
+        setEntries(mapEntriesFromServer(listRes.data.items, targetLocales));
+      }
+    } catch {
+      push({ variant: 'destructive', title: '上传失败', message: '处理文件时发生异常，请重试。' });
+    } finally {
+      setUploadBusy(false);
+    }
   };
 
-  const handleDownload = () => {
-    const isSource = downloadLocale === mockProject.sourceLocale;
-    const out: Record<string, string> = {};
-
-    for (const e of Object.values(entries)) {
-      if (isSource) {
-        out[e.key] = e.sourceText;
-        continue;
+  const handleDownload = async () => {
+    try {
+      const res = await exportLanguagePackAction({
+        projectId,
+        locale: downloadLocale,
+        mode: downloadMode
+      });
+      if (!res.ok) {
+        push({ variant: 'destructive', title: '导出失败', message: res.error });
+        return;
       }
 
-      const tr = e.translations[downloadLocale];
-      const hasText = !!tr?.text?.trim();
-      if (downloadMode === 'filled' && !hasText) continue;
-      if (hasText) out[e.key] = tr!.text;
-      else out[e.key] = downloadMode === 'fallback' ? e.sourceText : '';
+      const blob = new Blob([res.data.content], { type: 'application/json;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = res.data.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      push({ variant: 'default', title: '已开始下载', message: `导出语言：${downloadLocale}` });
+    } catch {
+      push({ variant: 'destructive', title: '导出失败', message: '导出过程中发生异常，请重试。' });
     }
-
-    const blob = new Blob([JSON.stringify(out, null, 2)], { type: 'application/json;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `project-${projectId}.${downloadLocale}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    push({ variant: 'default', title: '已开始下载', message: `导出语言：${downloadLocale}` });
   };
 
   const currentLocaleStats = useMemo(() => {
     const total = Object.keys(entries).length;
-    if (selectedLocale === mockProject.sourceLocale) {
+    if (selectedLocale === sourceLocale) {
       return { total, filled: total, pending: 0, hasUpdate: 0, approved: 0, untranslated: 0 };
     }
 
@@ -688,13 +947,13 @@ export function ProjectPackagesClient({
         continue;
       }
       if (tr.text.trim().length > 0) filled += 1;
-      if (tr.status === 'pending_review') pending += 1;
-      else if (tr.status === 'has_update') hasUpdate += 1;
+      if (tr.status === 'needs_review' || tr.status === 'ready') pending += 1;
+      else if (tr.status === 'needs_update') hasUpdate += 1;
       else if (tr.status === 'approved') approved += 1;
       else untranslated += 1;
     }
     return { total, filled, pending, hasUpdate, approved, untranslated };
-  }, [entries, mockProject.sourceLocale, selectedLocale]);
+  }, [entries, selectedLocale, sourceLocale]);
 
   const handleCreate = () => {
     setCreateError(null);
@@ -717,10 +976,10 @@ export function ProjectPackagesClient({
     }
 
     const translations: Entry['translations'] = {};
-    for (const l of mockProject.targetLocales) {
+    for (const l of targetLocales) {
       translations[l] = {
         text: l === createTargetLocale ? targetText : '',
-        status: l === createTargetLocale && targetText ? 'pending_review' : 'untranslated',
+        status: l === createTargetLocale && targetText ? 'needs_review' : 'pending',
         updatedAt: now
       };
     }
@@ -778,7 +1037,7 @@ export function ProjectPackagesClient({
                   }}
                 >
                   {l}
-                  {l === mockProject.sourceLocale ? (
+                  {l === sourceLocale ? (
                     <span className="ml-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">
                       源
                     </span>
@@ -822,8 +1081,8 @@ export function ProjectPackagesClient({
                     setCreateOpen(open);
                     if (open) {
                       setCreateTargetLocale(
-                        selectedLocale === mockProject.sourceLocale
-                          ? (mockProject.targetLocales[0] ?? mockProject.sourceLocale)
+                        selectedLocale === sourceLocale
+                          ? (targetLocales[0] ?? sourceLocale)
                           : selectedLocale
                       );
                       return;
@@ -850,22 +1109,32 @@ export function ProjectPackagesClient({
                           value={createKeyMode}
                           onValueChange={(v) => setCreateKeyMode(v as 'auto' | 'manual')}
                           className="grid gap-2"
-                        >
-                          <label className="flex items-start gap-2">
-                            <RadioGroupItem value="auto" />
-                            <div>
-                              <div className="text-sm text-foreground">系统生成（默认）</div>
-                              <div className="text-sm text-muted-foreground">ctx_ + 8 位短 ID（项目内唯一）</div>
-                            </div>
-                          </label>
-                          <label className="flex items-start gap-2">
-                            <RadioGroupItem value="manual" />
-                            <div>
-                              <div className="text-sm text-foreground">手动输入（推荐）</div>
-                              <div className="text-sm text-muted-foreground">适合工程化命名与长期维护</div>
-                            </div>
-                          </label>
-                        </RadioGroup>
+                          optionClassName="items-start gap-2"
+                          options={[
+                            {
+                              value: 'auto',
+                              label: (
+                                <div>
+                                  <div className="text-sm text-foreground">系统生成（默认）</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    ctx_ + 8 位短 ID（项目内唯一）
+                                  </div>
+                                </div>
+                              )
+                            },
+                            {
+                              value: 'manual',
+                              label: (
+                                <div>
+                                  <div className="text-sm text-foreground">手动输入（推荐）</div>
+                                  <div className="text-sm text-muted-foreground">
+                                    适合工程化命名与长期维护
+                                  </div>
+                                </div>
+                              )
+                            }
+                          ]}
+                        />
 
                         {createKeyMode === 'auto' ? (
                           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
@@ -913,18 +1182,14 @@ export function ProjectPackagesClient({
                         <div className="grid gap-3 sm:grid-cols-2">
                           <div>
                             <Label htmlFor="target-locale">目标语言（可选）</Label>
-                            <select
+                            <TargetLocaleSelect
                               id="target-locale"
-                              className={cn('mt-1', selectClassName())}
+                              targetLocales={targetLocales}
                               value={createTargetLocale}
-                              onChange={(e) => setCreateTargetLocale(e.target.value)}
-                            >
-                              {mockProject.targetLocales.map((l) => (
-                                <option key={l} value={l}>
-                                  {l}
-                                </option>
-                              ))}
-                            </select>
+                              onValueChange={setCreateTargetLocale}
+                              className="mt-1 w-full"
+                              placeholder="选择目标语言（可选）"
+                            />
                           </div>
                           <div>
                             <Label htmlFor="target-text">目标文案</Label>
@@ -986,62 +1251,23 @@ export function ProjectPackagesClient({
                   <div className="mt-1 text-sm text-muted-foreground">可尝试清空搜索或新增词条。</div>
                 </div>
               ) : (
-                <div className="overflow-auto rounded-md border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-card">
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">Key</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">源文案</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">当前语言</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">状态</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">更新时间</th>
-                        <th className="px-3 py-2 text-right font-medium text-muted-foreground">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredEntries.map((e) => {
-                        const tr = selectedLocale === mockProject.sourceLocale ? null : e.translations[selectedLocale];
-                        const currentText =
-                          selectedLocale === mockProject.sourceLocale
-                            ? e.sourceText
-                            : tr?.text?.trim()
-                              ? tr.text
-                              : '';
-
-                        return (
-                          <tr key={e.key} className="border-b last:border-b-0">
-                            <td className="px-3 py-2 align-top">
-                              <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{e.key}</code>
-                            </td>
-                            <td className="px-3 py-2 align-top text-foreground">
-                              <div className="max-w-[420px] break-words">{e.sourceText}</div>
-                            </td>
-                            <td className="px-3 py-2 align-top text-foreground">
-                              {currentText ? <div className="max-w-[420px] break-words">{currentText}</div> : <span className="text-muted-foreground">—</span>}
-                            </td>
-                            <td className="px-3 py-2 align-top">
-                              {selectedLocale === mockProject.sourceLocale ? (
-                                <span className="text-xs text-muted-foreground">源语言</span>
-                              ) : tr ? (
-                                <StatusPill status={tr.status} />
-                              ) : (
-                                <StatusPill status="untranslated" />
-                              )}
-                            </td>
-                            <td className="px-3 py-2 align-top text-muted-foreground"><span suppressHydrationWarning>{formatDateTime(e.updatedAt)}</span></td>
-                            <td className="px-3 py-2 align-top text-right">
-                              <Button type="button" variant="outline" size="sm" onClick={() => openEdit(e.key)}>
-                                <Pencil />
-                                编辑
-                              </Button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                <Table
+                  columns={entryColumns}
+                  data={pagedEntries}
+                  rowKey="key"
+                  className="rounded-md border"
+                  tableClassName="text-sm"
+                />
               )}
+
+              {filteredEntries.length > 0 ? (
+                <Pagination
+                  page={page}
+                  pageCount={pageCount}
+                  total={filteredEntries.length}
+                  onChange={(next) => setPage(next)}
+                />
+              ) : null}
             </CardContent>
           </Card>
 
@@ -1074,7 +1300,7 @@ export function ProjectPackagesClient({
                     onChange={(e) => setEditSourceText(e.target.value)}
                   />
                 </div>
-                {selectedLocale !== mockProject.sourceLocale ? (
+                {selectedLocale !== sourceLocale ? (
                   <div>
                     <Label htmlFor="edit-target">当前语言（{selectedLocale}）</Label>
                     <Input
@@ -1159,6 +1385,9 @@ export function ProjectPackagesClient({
                           <div className="text-sm text-muted-foreground">
                             文件名：project-{projectId}.{downloadLocale}.json
                           </div>
+                          <div className="text-sm text-muted-foreground">
+                            结构：{templateShape === 'tree' ? '树形' : '扁平'}
+                          </div>
                         </div>
 
                         <div className="grid gap-2">
@@ -1168,33 +1397,49 @@ export function ProjectPackagesClient({
                               value={downloadMode}
                               onValueChange={(v) => setDownloadMode(v as DownloadMode)}
                               className="grid gap-2"
-                            >
-                              <label className="flex items-start gap-2">
-                                <RadioGroupItem value="fallback" />
-                                <div>
-                                  <div className="text-sm text-foreground">未翻译回退源语言（默认）</div>
-                                  <div className="text-sm text-muted-foreground">便于联调与避免空文本</div>
-                                </div>
-                              </label>
-                              <label className="flex items-start gap-2">
-                                <RadioGroupItem value="empty" />
-                                <div>
-                                  <div className="text-sm text-foreground">未翻译导出空字符串</div>
-                                  <div className="text-sm text-muted-foreground">便于定位缺失翻译</div>
-                                </div>
-                              </label>
-                              <label className="flex items-start gap-2">
-                                <RadioGroupItem value="filled" />
-                                <div>
-                                  <div className="text-sm text-foreground">仅导出已填写</div>
-                                  <div className="text-sm text-muted-foreground">仅包含有目标文案的 key</div>
-                                </div>
-                              </label>
-                            </RadioGroup>
+                              optionClassName="items-start gap-2"
+                              options={[
+                                {
+                                  value: 'fallback',
+                                  label: (
+                                    <div>
+                                      <div className="text-sm text-foreground">
+                                        未翻译回退源语言（默认）
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        便于联调与避免空文本
+                                      </div>
+                                    </div>
+                                  )
+                                },
+                                {
+                                  value: 'empty',
+                                  label: (
+                                    <div>
+                                      <div className="text-sm text-foreground">未翻译导出空字符串</div>
+                                      <div className="text-sm text-muted-foreground">
+                                        便于定位缺失翻译
+                                      </div>
+                                    </div>
+                                  )
+                                },
+                                {
+                                  value: 'filled',
+                                  label: (
+                                    <div>
+                                      <div className="text-sm text-foreground">仅导出已填写</div>
+                                      <div className="text-sm text-muted-foreground">
+                                        仅包含有目标文案的 key
+                                      </div>
+                                    </div>
+                                  )
+                                }
+                              ]}
+                            />
                           </div>
                         </div>
 
-                        {downloadLocale !== mockProject.sourceLocale ? (
+                        {downloadLocale !== sourceLocale ? (
                           <div className="rounded-lg border bg-card p-4">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-sm text-muted-foreground">
@@ -1323,7 +1568,7 @@ export function ProjectPackagesClient({
                           <span className="ml-2 text-xs font-normal text-muted-foreground">不自动删除</span>
                         </div>
                       </div>
-                      {latestRecord.locale === mockProject.sourceLocale ? (
+                      {latestRecord.locale === sourceLocale ? (
                         <>
                           <div className="rounded-md border bg-background px-3 py-2">
                             <div className="text-xs text-muted-foreground">有更新 key 数</div>
@@ -1371,51 +1616,13 @@ export function ProjectPackagesClient({
                   <div className="mt-1 text-sm text-muted-foreground">上传一次语言包后，会在这里生成可回溯记录。</div>
                 </div>
               ) : (
-                <div className="max-h-[520px] overflow-auto rounded-md border">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-card">
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">时间</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">语言</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">操作者</th>
-                        <th className="px-3 py-2 text-left font-medium text-muted-foreground">摘要</th>
-                        <th className="px-3 py-2 text-right font-medium text-muted-foreground">操作</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {history.map((r) => (
-                        <tr key={r.id} className="border-b last:border-b-0">
-                          <td className="px-3 py-2 align-top text-foreground"><span suppressHydrationWarning>{formatDateTime(r.createdAt)}</span></td>
-                          <td className="px-3 py-2 align-top">
-                            <div className="flex items-center gap-2">
-                              <span className="text-foreground">{r.locale}</span>
-                              {r.locale === mockProject.sourceLocale ? (
-                                <span className="rounded-md border border-border bg-background px-1.5 py-0.5 text-xs text-muted-foreground">源</span>
-                              ) : null}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 align-top text-foreground">{r.operator}</td>
-                          <td className="px-3 py-2 align-top">
-                            <div className="flex flex-wrap gap-2">
-                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">新增 {r.summary.added}</span>
-                              <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">更新 {r.summary.updated}</span>
-                              {r.locale === mockProject.sourceLocale ? (
-                                <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">有更新 {r.summary.hasUpdate}</span>
-                              ) : (
-                                <span className="rounded-md border bg-background px-2 py-0.5 text-xs text-foreground">待审核 {r.summary.pendingReview}</span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-3 py-2 align-top text-right">
-                            <Button type="button" variant="outline" size="sm" onClick={() => openDetails(r.id)}>
-                              查看
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <Table
+                  columns={historyColumns}
+                  data={history}
+                  rowKey="id"
+                  className="max-h-[520px] overflow-auto rounded-md border"
+                  tableClassName="text-sm"
+                />
               )}
 
               <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
@@ -1440,7 +1647,7 @@ export function ProjectPackagesClient({
                           <div className="text-xs text-muted-foreground">更新 key</div>
                           <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.updated}</div>
                         </div>
-                        {detailRecord.locale === mockProject.sourceLocale ? (
+                        {detailRecord.locale === sourceLocale ? (
                           <div className="rounded-lg border bg-background px-3 py-2">
                             <div className="text-xs text-muted-foreground">有更新</div>
                             <div className="mt-0.5 text-base font-semibold text-foreground">{detailRecord.summary.hasUpdate}</div>
@@ -1480,33 +1687,18 @@ export function ProjectPackagesClient({
                           {detailRecord.updatedKeys.length === 0 ? (
                             <div className="mt-2 text-sm text-muted-foreground">本次无更新。</div>
                           ) : (
-                            <div className="mt-3 overflow-auto rounded-md border">
-                              <table className="w-full text-sm">
-                                <thead>
-                                  <tr className="border-b bg-background">
-                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">Key</th>
-                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">之前</th>
-                                    <th className="px-3 py-2 text-left font-medium text-muted-foreground">之后</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {detailRecord.updatedKeys.slice(0, 20).map((it) => (
-                                    <tr key={it.key} className="border-b last:border-b-0">
-                                      <td className="px-3 py-2 align-top">
-                                        <code className="rounded-md border bg-card px-2 py-1 text-xs text-foreground">{it.key}</code>
-                                      </td>
-                                      <td className="px-3 py-2 align-top text-foreground">{it.before || '—'}</td>
-                                      <td className="px-3 py-2 align-top text-foreground">{it.after || '—'}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
+                            <Table
+                              columns={updatedKeyColumns}
+                              data={detailRecord.updatedKeys.slice(0, 20)}
+                              rowKey="key"
+                              className="mt-3 rounded-md border"
+                              tableClassName="text-sm"
+                            />
                           )}
                         </div>
                       </div>
 
-                      {detailRecord.locale !== mockProject.sourceLocale ? (
+                      {detailRecord.locale !== sourceLocale ? (
                         <div className="rounded-lg border bg-card p-4">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
@@ -1514,7 +1706,7 @@ export function ProjectPackagesClient({
                               <div className="mt-1 text-sm text-muted-foreground">目标语言上传导入/覆盖的译文会统一进入待审核。</div>
                             </div>
                             <Button asChild variant="outline" size="sm">
-                              <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(detailRecord.locale)}&status=pending_review`}>
+                              <Link href={`/projects/${projectId}/workbench?locale=${encodeURIComponent(detailRecord.locale)}&status=needs_review`}>
                                 跳转到翻译工作台
                               </Link>
                             </Button>
@@ -1539,7 +1731,7 @@ export function ProjectPackagesClient({
                               <div className="mt-1 text-sm text-muted-foreground">源文案更新会使已存在译文标记为有更新。</div>
                             </div>
                             <Button asChild variant="outline" size="sm">
-                              <Link href={`/projects/${projectId}/workbench?status=has_update`}>
+                              <Link href={`/projects/${projectId}/workbench?status=needs_update`}>
                                 跳转到翻译工作台
                               </Link>
                             </Button>

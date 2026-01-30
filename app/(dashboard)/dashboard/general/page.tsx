@@ -2,7 +2,7 @@
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Lock, Trash2, Loader2 } from 'lucide-react';
 import { useActionState } from 'react';
@@ -38,11 +38,7 @@ export default function SecurityPage() {
   return (
     <div className="space-y-6">
       <h1 className="text-xl font-semibold text-foreground lg:text-2xl">{t('title')}</h1>
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>{t('passwordTitle')}</CardTitle>
-        </CardHeader>
-        <CardContent>
+      <Card className="mb-8" title={t('passwordTitle')}>
           <form className="space-y-4" action={passwordAction}>
             <div>
               <Label htmlFor="current-password" className="mb-2">{t('currentPassword')}</Label>
@@ -102,7 +98,6 @@ export default function SecurityPage() {
               )}
             </Button>
           </form>
-        </CardContent>
       </Card>
 
     </div>

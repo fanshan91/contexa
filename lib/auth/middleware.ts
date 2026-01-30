@@ -44,12 +44,12 @@ export function validatedActionWithUser<S extends z.ZodType<any, any>, T>(
   return async (prevState: ActionState, formData: FormData) => {
     const user = await getUser();
     if (!user) {
-      throw new Error('User is not authenticated');
+      redirect('/sign-in');
     }
 
+    const t = await getTranslations();
     const result = schema.safeParse(Object.fromEntries(formData));
     if (!result.success) {
-      const t = await getTranslations();
       return { error: t(result.error.errors[0].message) };
     }
 
@@ -91,18 +91,18 @@ export function validatedActionWithProject<S extends z.ZodType<any, any>, T>(
   return async (prevState: ActionState, formData: FormData) => {
     const user = await getUser();
     if (!user) {
-      throw new Error('User is not authenticated');
+      redirect('/sign-in');
     }
 
+    const t = await getTranslations();
     const result = schema.safeParse(Object.fromEntries(formData));
     if (!result.success) {
-      const t = await getTranslations();
       return { error: t(result.error.errors[0].message) };
     }
 
     const { projectId } = result.data as { projectId?: number };
     if (typeof projectId !== 'number') {
-      return { error: 'projectId is required' };
+      return { error: t('projectLayout.invalidProjectIdTitle') };
     }
 
     if (!user.isSystemAdmin) {
@@ -110,7 +110,7 @@ export function validatedActionWithProject<S extends z.ZodType<any, any>, T>(
         where: { projectId_userId: { projectId, userId: user.id } }
       });
       if (!member) {
-        return { error: '没有该项目的访问权限' };
+        return { error: t('projectLayout.noAccessTitle') };
       }
     }
 

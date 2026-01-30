@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { requireUser } from '@/lib/auth/guards';
 import { prisma } from '@/lib/db/prisma';
 import { ResetPasswordForm } from '../../reset-password-form';
@@ -44,16 +44,11 @@ export default async function ResetPasswordPage({
         </Button>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t('confirmAction')}</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      <Card title={t('confirmAction')} contentClassName="space-y-4">
           <div className="text-sm text-muted-foreground">
             {t('targetUser')}: {target.email}
           </div>
           <ResetPasswordForm userId={target.id} />
-        </CardContent>
       </Card>
     </div>
   );

@@ -5,6 +5,8 @@
     "predev": "prisma generate",
     "prebuild": "prisma generate",
     "dev": "next dev --turbopack",
+    "dev:classic": "next dev",
+    "dev:debug": "NODE_OPTIONS=--inspect next dev",
     "build": "next build",
     "start": "next start",
     "test:api": "node scripts/test-api-me-password.mjs",
@@ -19,8 +21,10 @@
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
+    "@hookform/resolvers": "^5.2.2",
     "@prisma/client": "^6.2.1",
     "@tailwindcss/postcss": "4.1.7",
+    "@tanstack/react-table": "^8.21.3",
     "@types/node": "^22.15.18",
     "@types/react": "19.1.4",
     "@types/react-dom": "19.1.5",
@@ -40,6 +44,7 @@
     "radix-ui": "^1.4.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "react-hook-form": "^7.71.1",
     "server-only": "^0.0.1",
     "swr": "^2.3.3",
     "tailwind-merge": "^3.3.0",
