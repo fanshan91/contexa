@@ -88,6 +88,7 @@ export default async function ProjectWorkbenchPage({
   const requestedStatuses = getParam('statuses');
   const requestedSearch = getParam('search');
   const requestedPage = getParam('page');
+  const requestedPageSize = getParam('pageSize');
 
   const preferredLocale = await getUserProjectLocalePreference(id);
   const fallbackLocale = targetLocales.includes('en') ? 'en' : targetLocales[0]!;
@@ -113,6 +114,7 @@ export default async function ProjectWorkbenchPage({
   const resolvedStatuses = requestedStatuses || defaultStatuses.join(',');
 
   const pageNumber = Math.max(1, Number(requestedPage || '1'));
+  const resolvedPageSize = Math.min(100, Math.max(1, Math.floor(Number(requestedPageSize || '20'))));
 
   const shouldRedirect =
     requestedLocale !== resolvedLocale ||
@@ -126,6 +128,7 @@ export default async function ProjectWorkbenchPage({
     ensureParam('moduleId', resolvedModuleId);
     ensureParam('search', requestedSearch);
     ensureParam('page', String(pageNumber));
+    ensureParam('pageSize', String(resolvedPageSize));
     redirect(`?${paramsForRedirect.toString()}`);
   }
 
@@ -141,7 +144,7 @@ export default async function ProjectWorkbenchPage({
     search: requestedSearch || undefined,
     statuses: statuses as any,
     page: pageNumber,
-    pageSize: 20
+    pageSize: resolvedPageSize
   });
 
   return (

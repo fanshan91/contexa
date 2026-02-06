@@ -18,6 +18,7 @@ type WorkbenchTableProps = {
   items: WorkbenchItem[];
   total: number;
   page: number;
+  pageSize: number;
   totalPages: number;
 };
 
@@ -36,7 +37,7 @@ function statusBadgeVariant(status: TranslationStatus) {
   }
 }
 
-export function WorkbenchTable({ projectId, locale, items, total, page, totalPages }: WorkbenchTableProps) {
+export function WorkbenchTable({ projectId, locale, items, total, page, pageSize, totalPages }: WorkbenchTableProps) {
   const t = useTranslations('projectWorkbench');
   const toast = useToast();
   const router = useRouter();
@@ -55,6 +56,13 @@ export function WorkbenchTable({ projectId, locale, items, total, page, totalPag
   const setPage = (nextPage: number) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set('page', String(nextPage));
+    router.push(`?${params.toString()}`);
+  };
+
+  const setPageSize = (nextPageSize: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('pageSize', String(nextPageSize));
+    params.set('page', '1');
     router.push(`?${params.toString()}`);
   };
 
@@ -177,9 +185,17 @@ export function WorkbenchTable({ projectId, locale, items, total, page, totalPag
       )}
 
       <div className="border-t border-border bg-card p-4">
-        <Pagination page={page} pageCount={Math.max(1, totalPages)} total={total} onChange={setPage} pending={saving} />
+        <Pagination
+          page={page}
+          pageCount={Math.max(1, totalPages)}
+          total={total}
+          onChange={setPage}
+          pageSize={pageSize}
+          pageSizeOptions={[20, 50, 100]}
+          onPageSizeChange={setPageSize}
+          pending={saving}
+        />
       </div>
     </div>
   );
 }
-

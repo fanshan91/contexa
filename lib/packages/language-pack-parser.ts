@@ -29,6 +29,14 @@ function normalizeKeySegment(segment: string) {
   return segment.trim();
 }
 
+function formatPath(path: string[]) {
+  return joinPath(path);
+}
+
+function formatEmptyKeyPath(path: string[]) {
+  return joinPath([...path, '[空]']);
+}
+
 function flattenTree(
   node: Record<string, unknown>,
   basePath: string[],
@@ -37,13 +45,18 @@ function flattenTree(
 ): ParseLanguagePackResult {
   for (const [rawKey, rawValue] of Object.entries(node)) {
     const seg = normalizeKeySegment(rawKey);
-    if (!seg) return { ok: false, error: '结构不符合约定：对象 key 不能为空。' };
+    if (!seg) {
+      return {
+        ok: false,
+        error: `结构不符合约定：对象 key 不能为空（路径：${formatEmptyKeyPath(basePath)}）。`
+      };
+    }
     const nextPath = [...basePath, seg];
 
     if (typeof rawValue === 'string') {
       const key = joinPath(nextPath);
       if (map[key] !== undefined) {
-        return { ok: false, error: `结构不符合约定：${key} 的 key 存在冲突。` };
+        return { ok: false, error: `结构不符合约定：路径 ${key} 的 key 存在冲突。` };
       }
       map[key] = rawValue;
       drafts.push({ key, value: rawValue, originalPath: nextPath });
@@ -51,7 +64,10 @@ function flattenTree(
     }
 
     if (Array.isArray(rawValue)) {
-      return { ok: false, error: `结构不符合约定：${joinPath(nextPath)} 的 value 不能为数组。` };
+      return {
+        ok: false,
+        error: `结构不符合约定：路径 ${formatPath(nextPath)} 的 value 不能为数组。`
+      };
     }
 
     if (isPlainObject(rawValue)) {
@@ -60,7 +76,10 @@ function flattenTree(
       continue;
     }
 
-    return { ok: false, error: `结构不符合约定：${joinPath(nextPath)} 的 value 必须为字符串。` };
+    return {
+      ok: false,
+      error: `结构不符合约定：路径 ${formatPath(nextPath)} 的 value 必须为字符串。`
+    };
   }
 
   return { ok: true, data: { shape: 'tree', drafts, map } };
@@ -88,12 +107,20 @@ export function parseLanguagePack(raw: string): ParseLanguagePackResult {
   if (shape === 'flat') {
     for (const [rawKey, rawValue] of entries) {
       const key = normalizeKeySegment(rawKey);
-      if (!key) return { ok: false, error: '结构不符合约定：对象 key 不能为空。' };
+      if (!key) {
+        return {
+          ok: false,
+          error: `结构不符合约定：对象 key 不能为空（路径：${formatEmptyKeyPath([])}）。`
+        };
+      }
       if (typeof rawValue !== 'string') {
-        return { ok: false, error: `结构不符合约定：${key} 的 value 必须为字符串。` };
+        return {
+          ok: false,
+          error: `结构不符合约定：路径 ${formatPath([key])} 的 value 必须为字符串。`
+        };
       }
       if (map[key] !== undefined) {
-        return { ok: false, error: `结构不符合约定：${key} 的 key 存在冲突。` };
+        return { ok: false, error: `结构不符合约定：路径 ${key} 的 key 存在冲突。` };
       }
       map[key] = rawValue;
       drafts.push({ key, value: rawValue, originalPath: [key] });

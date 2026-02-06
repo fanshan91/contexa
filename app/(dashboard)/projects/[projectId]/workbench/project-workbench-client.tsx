@@ -76,6 +76,7 @@ export function ProjectWorkbenchClient({
             items={data.items}
             total={data.total}
             page={data.page}
+            pageSize={data.pageSize}
             totalPages={data.totalPages}
           />
         </div>

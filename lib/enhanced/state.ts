@@ -6,7 +6,12 @@ const KEYS = {
   instanceId: 'core.instance_id',
   sessionCurrent: 'core.enhanced.session.current',
   sessionPrevious: 'core.enhanced.session.previous',
-  lastHeartbeatSuccess: 'core.enhanced.heartbeat.last_success'
+  lastHeartbeatSuccess: 'core.enhanced.heartbeat.last_success',
+  enhancedEndpoint: 'core.enhanced.endpoint',
+  enhancedAuthMode: 'core.enhanced.auth_mode',
+  enhancedSharedSecret: 'core.enhanced.shared_secret',
+  enhancedClientId: 'core.enhanced.client_id',
+  enhancedClientSecret: 'core.enhanced.client_secret'
 } as const;
 
 async function getMetaValue(key: string): Promise<string | null> {
@@ -67,3 +72,51 @@ export async function getLastSuccessfulHeartbeat(): Promise<Date | null> {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
+export type EnhancedAuthMode = 'shared_secret' | 'client_credentials';
+
+export type EnhancedConfig = {
+  endpoint: string | null;
+  authMode: EnhancedAuthMode;
+  sharedSecret: string | null;
+  clientId: string | null;
+  clientSecret: string | null;
+};
+
+export async function getEnhancedConfig(): Promise<EnhancedConfig> {
+  const [endpoint, authMode, sharedSecret, clientId, clientSecret] = await Promise.all([
+    getMetaValue(KEYS.enhancedEndpoint),
+    getMetaValue(KEYS.enhancedAuthMode),
+    getMetaValue(KEYS.enhancedSharedSecret),
+    getMetaValue(KEYS.enhancedClientId),
+    getMetaValue(KEYS.enhancedClientSecret)
+  ]);
+
+  return {
+    endpoint,
+    authMode: authMode === 'client_credentials' ? 'client_credentials' : 'shared_secret',
+    sharedSecret,
+    clientId,
+    clientSecret
+  };
+}
+
+export async function setEnhancedConfig(input: {
+  endpoint: string;
+  authMode: EnhancedAuthMode;
+  sharedSecret?: string | null;
+  clientId?: string | null;
+  clientSecret?: string | null;
+}): Promise<void> {
+  await setMetaValue(KEYS.enhancedEndpoint, input.endpoint);
+  await setMetaValue(KEYS.enhancedAuthMode, input.authMode);
+
+  if (typeof input.sharedSecret === 'string') {
+    await setMetaValue(KEYS.enhancedSharedSecret, input.sharedSecret);
+  }
+  if (typeof input.clientId === 'string') {
+    await setMetaValue(KEYS.enhancedClientId, input.clientId);
+  }
+  if (typeof input.clientSecret === 'string') {
+    await setMetaValue(KEYS.enhancedClientSecret, input.clientSecret);
+  }
+}

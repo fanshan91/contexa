@@ -134,6 +134,10 @@ model Project {
   locks       TranslationPageLock[]
   packageUploads PackageUpload[]
   settings    ProjectSetting[]
+  runtimeToken ProjectRuntimeToken?
+  runtimeSessions RuntimeSession[]
+  runtimeEvents RuntimeEvent[]
+  runtimeAggregates RuntimeKeyAggregate[]
   createdBy   User?    @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id])
   invitations ProjectInvitation[]
   localePreferences UserProjectLocalePreference[]
@@ -141,6 +145,77 @@ model Project {
   negativePrompts ProjectNegativePrompt[]
 
   @@unique([name])
+}
+
+model ProjectRuntimeToken {
+  projectId  Int     @id
+  tokenEnc   String
+  tokenHash  String
+  enabled    Boolean @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime @default(now())
+  rotatedAt  DateTime @default(now())
+  lastUsedAt DateTime?
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+}
+
+model RuntimeSession {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  status      String   @default("active")
+  sdkIdentity String?
+  env         String?
+  startedAt   DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  closedAt    DateTime?
+  summaryJson String?
+
+  project    Project            @relation(fields: [projectId], references: [id])
+  events     RuntimeEvent[]
+  aggregates RuntimeKeyAggregate[]
+
+  @@index([projectId, status])
+  @@index([projectId, lastSeenAt])
+}
+
+model RuntimeEvent {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  sessionId  Int?
+  route      String
+  key        String
+  sourceText String
+  occurredAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  metaJson   String?
+
+  project Project       @relation(fields: [projectId], references: [id])
+  session RuntimeSession? @relation(fields: [sessionId], references: [id])
+
+  @@index([projectId, occurredAt])
+  @@index([projectId, route, occurredAt])
+  @@index([projectId, key, occurredAt])
+}
+
+model RuntimeKeyAggregate {
+  id            Int      @id @default(autoincrement())
+  projectId     Int
+  route         String
+  key           String
+  sourceText    String
+  count         Int      @default(0)
+  lastSeenAt    DateTime @default(now())
+  lastSessionId Int?
+  updatedAt     DateTime @updatedAt
+
+  project     Project         @relation(fields: [projectId], references: [id])
+  lastSession RuntimeSession? @relation(fields: [lastSessionId], references: [id])
+
+  @@unique([projectId, route, key])
+  @@index([projectId, lastSeenAt])
+  @@index([projectId, route, lastSeenAt])
 }
 
 model ProjectSetting {

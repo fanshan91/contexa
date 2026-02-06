@@ -4,7 +4,7 @@ import { Suspense, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useTranslations } from 'next-intl';
-import { BookOpen, Languages, LayoutDashboard, LayoutTemplate, Settings } from 'lucide-react';
+import { Activity, BookOpen, Languages, LayoutDashboard, LayoutTemplate, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 type NavItem = {
@@ -85,6 +85,11 @@ export function ProjectSidebar({
         href: `/projects/${projectId}/context`,
         icon: LayoutTemplate,
         label: t('context')
+      },
+      {
+        href: `/projects/${projectId}/runtime-sync`,
+        icon: Activity,
+        label: t('runtimeSync')
       },
       {
         href: `/projects/${projectId}/settings/basic`,

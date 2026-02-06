@@ -1,51 +1,25 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Eye, Plus, Upload } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { Plus, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from '@/components/ui/card-primitives';
 import { DropdownMenu } from '@/components/ui/dropdown-menu';
-import { type TableColumn } from '@/components/ui/table';
 import { Tabs } from '@/components/ui/tabs';
 import { useToast } from '@/components/ui/toast';
-import { parseLanguagePack } from '@/lib/packages/language-pack-parser';
 import {
   exportLanguagePackAction,
-  checkPackagesEntryKeyQuery,
-  createPackagesEntryAction,
-  importLanguagePackAction,
-  getPackagesUploadHistoryDetailQuery,
-  listPackagesUploadHistoryQuery,
-  listPackagesContextNodesQuery,
-  listPackagesEntryPlacementsQuery,
-  listPackagesEntriesQuery,
-  type PackagesContextPageNode,
-  type PackagesUploadHistoryDetail,
-  type PackagesUploadHistoryItem,
-  type PackagesEntry,
-  type PackagesEntryPlacement
+  type PackagesEntry
 } from './actions';
-import {
-  buildLocaleOptions,
-  CreateEntrySheet,
-  DownloadDialog,
-  EntriesTabContent,
-  formatDateTime,
-  HistoryDetailSheet,
-  HistoryTabContent,
-  ImportTabContent,
-  type ImportBindPlanDraft,
-  type ImportPreview,
-  type DownloadMode,
-  type TabKey,
-  type TranslationStatus,
-  PlacementsDialog,
-  randomShortId,
-  StatusPill,
-  useSearchPagination
-} from './project-packages-components';
+import { CreateEntrySheetContainer, DownloadDialog } from './dialogs';
+import { EntriesTabContent } from './entries';
+import { HistoryPanel } from './history';
+import { ImportTabContent } from './import';
+import { useSearchPagination } from './hooks';
+import type { DownloadMode, TabKey, TranslationStatus } from './types';
+import { buildLocaleOptions } from './utils';
 
 export function ProjectPackagesClient({
   projectId,
@@ -69,7 +43,6 @@ export function ProjectPackagesClient({
   entriesError: string;
 }) {
   const { push } = useToast();
-  const importFileRef = useRef<HTMLInputElement | null>(null);
   const [tab, setTab] = useState<TabKey>(() => initialTab ?? 'entries');
   const [selectedLocale, setSelectedLocale] = useState(sourceLocale);
   const [query, setQuery] = useState('');
@@ -84,50 +57,10 @@ export function ProjectPackagesClient({
   const [filledFilter, setFilledFilter] = useState<'all' | 'filled' | 'empty'>('all');
   const [statusFilter, setStatusFilter] = useState<TranslationStatus | 'all'>('all');
 
-  const [placementsOpen, setPlacementsOpen] = useState(false);
-  const [placementsBusy, setPlacementsBusy] = useState(false);
-  const [placementsError, setPlacementsError] = useState<string | null>(null);
-  const [placementsEntry, setPlacementsEntry] = useState<PackagesEntry | null>(null);
-  const [placements, setPlacements] = useState<PackagesEntryPlacement[]>([]);
-
-  const [importBusy, setImportBusy] = useState(false);
-  const [importStage, setImportStage] = useState<'idle' | 'parsed' | 'confirmed'>('idle');
-  const [importError, setImportError] = useState<string | null>(null);
-  const [importFileName, setImportFileName] = useState('');
-  const [importFileSize, setImportFileSize] = useState<number | null>(null);
-  const [importRawJson, setImportRawJson] = useState('');
-  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
-  const [importMap, setImportMap] = useState<Record<string, string> | null>(null);
-  const [previewTab, setPreviewTab] = useState<'added' | 'updated' | 'ignored'>('added');
   const [lastImportContextLink, setLastImportContextLink] = useState<string | null>(null);
-
-  const [historyLoaded, setHistoryLoaded] = useState(false);
-  const [historyBusy, setHistoryBusy] = useState(false);
-  const [historyError, setHistoryError] = useState<string | null>(null);
-  const [history, setHistory] = useState<PackagesUploadHistoryItem[]>([]);
-  const [historyQuery, setHistoryQuery] = useState('');
-
-  const [detailOpen, setDetailOpen] = useState(false);
-  const [detailBusy, setDetailBusy] = useState(false);
-  const [detailError, setDetailError] = useState<string | null>(null);
-  const [detail, setDetail] = useState<PackagesUploadHistoryDetail | null>(null);
+  const [historyRefreshSignal, setHistoryRefreshSignal] = useState(0);
 
   const [createOpen, setCreateOpen] = useState(false);
-  const [createKeyMode, setCreateKeyMode] = useState<'auto' | 'manual'>('auto');
-  const [createKey, setCreateKey] = useState(() => `ctx_${randomShortId()}`);
-  const [createSourceText, setCreateSourceText] = useState('');
-  const [createTargetLocale, setCreateTargetLocale] = useState(targetLocales[0] ?? '');
-  const [createTargetText, setCreateTargetText] = useState('');
-  const [createPageId, setCreatePageId] = useState('');
-  const [createModuleId, setCreateModuleId] = useState('');
-  const [createError, setCreateError] = useState<string | null>(null);
-  const [createBusy, setCreateBusy] = useState(false);
-  const [keyCheck, setKeyCheck] = useState<'idle' | 'checking' | 'available' | 'taken' | 'error'>('idle');
-
-  const [contextLoaded, setContextLoaded] = useState(false);
-  const [contextBusy, setContextBusy] = useState(false);
-  const [contextError, setContextError] = useState<string | null>(null);
-  const [contextPages, setContextPages] = useState<PackagesContextPageNode[]>([]);
 
   const localeOptions = useMemo(
     () => buildLocaleOptions(sourceLocale, targetLocales),
@@ -188,627 +121,11 @@ export function ProjectPackagesClient({
     }
   });
 
-  const openPlacements = async (entry: PackagesEntry) => {
-    setPlacementsEntry(entry);
-    setPlacementsOpen(true);
-    setPlacementsError(null);
-    setPlacementsBusy(true);
-    try {
-      const res = await listPackagesEntryPlacementsQuery({ projectId, entryId: entry.id });
-      if (!res.ok) {
-        setPlacementsError(res.error);
-        setPlacements([]);
-        return;
-      }
-      setPlacements(res.data.items);
-    } catch {
-      setPlacementsError('加载归属失败，请重试。');
-      setPlacements([]);
-    } finally {
-      setPlacementsBusy(false);
-    }
-  };
-
-  const entryColumns = useMemo<Array<TableColumn<PackagesEntry>>>(
-    () => [
-      {
-        key: 'key',
-        title: 'Key',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top',
-        render: (_value: unknown, record: PackagesEntry) => (
-          <code className="rounded-md border border-border bg-card px-2 py-1 text-xs text-foreground">
-            {record.key}
-          </code>
-        )
-      },
-      {
-        key: 'sourceText',
-        title: '源文案',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-foreground',
-        render: (_value: unknown, record: PackagesEntry) => (
-          <div className="max-w-[420px] break-words">{record.sourceText}</div>
-        )
-      },
-      {
-        key: 'currentText',
-        title: '当前语言',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-foreground',
-        render: (_value: unknown, record: PackagesEntry) => {
-          const current = isSource
-            ? record.sourceText
-            : (record.translations[selectedLocale]?.text ?? '');
-          return current?.trim() ? (
-            <div className="max-w-[420px] break-words">{current}</div>
-          ) : (
-            <span className="text-muted-foreground">—</span>
-          );
-        }
-      },
-      {
-        key: 'status',
-        title: '状态',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top',
-        render: (_value: unknown, record: PackagesEntry) => {
-          if (isSource) return <span className="text-xs text-muted-foreground">源语言</span>;
-          const tr = record.translations[selectedLocale];
-          return <StatusPill status={(tr?.status ?? 'pending') as TranslationStatus} />;
-        }
-      },
-      {
-        key: 'placement',
-        title: '归属',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top',
-        render: (_value: unknown, record: PackagesEntry) => {
-          const label = record.placement
-            ? `${record.placement.pageTitle || record.placement.pageRoute}${record.placement.moduleName ? ` / ${record.placement.moduleName}` : ''}`
-            : '未归属';
-
-          return (
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={record.placement ? 'outline' : 'secondary'} className="max-w-[280px] truncate">
-                {label}
-              </Badge>
-              {record.hasMorePlacements ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 px-2"
-                  onClick={() => void openPlacements(record)}
-                >
-                  查看更多
-                </Button>
-              ) : null}
-            </div>
-          );
-        }
-      },
-      {
-        key: 'updatedAt',
-        title: '更新时间',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-muted-foreground',
-        render: (_value: unknown, record: PackagesEntry) => (
-          <span suppressHydrationWarning>{formatDateTime(record.updatedAt)}</span>
-        )
-      }
-    ],
-    [isSource, openPlacements, selectedLocale]
-  );
-
   const selectedLocaleLabel = useMemo(() => {
     const found = localeOptions.find((o) => o.code === selectedLocale);
     if (!found) return selectedLocale;
     return found.label;
   }, [localeOptions, selectedLocale]);
-
-  const loadHistory = async (force?: boolean) => {
-    if (historyBusy) return;
-    if (!force && historyLoaded) return;
-    setHistoryBusy(true);
-    setHistoryError(null);
-    try {
-      const res = await listPackagesUploadHistoryQuery(projectId);
-      if (!res.ok) {
-        setHistoryError(res.error);
-        setHistory([]);
-        setHistoryLoaded(true);
-        return;
-      }
-      setHistory(res.data.items);
-      setHistoryLoaded(true);
-    } catch {
-      setHistoryError('加载上传历史失败，请重试。');
-      setHistory([]);
-      setHistoryLoaded(true);
-    } finally {
-      setHistoryBusy(false);
-    }
-  };
-
-  const openHistoryDetail = async (uploadId: number) => {
-    setDetailOpen(true);
-    setDetailBusy(true);
-    setDetailError(null);
-    setDetail(null);
-    try {
-      const res = await getPackagesUploadHistoryDetailQuery({ projectId, uploadId });
-      if (!res.ok) {
-        setDetailError(res.error);
-        return;
-      }
-      setDetail(res.data);
-    } catch {
-      setDetailError('加载详情失败，请重试。');
-    } finally {
-      setDetailBusy(false);
-    }
-  };
-
-  useEffect(() => {
-    if (tab !== 'history') return;
-    void loadHistory();
-  }, [tab, historyLoaded]);
-
-  const {
-    page: historyPage,
-    setPage: setHistoryPage,
-    pageCount: historyPageCount,
-    filteredTotal: historyFilteredTotal,
-    pageItems: historyPageItems
-  } = useSearchPagination({
-    items: history,
-    query: historyQuery,
-    pageSize: 20,
-    predicate: (it, q) => {
-      return (
-        it.locale.toLowerCase().includes(q) ||
-        it.operator.toLowerCase().includes(q) ||
-        formatDateTime(it.createdAt).toLowerCase().includes(q)
-      );
-    }
-  });
-
-  const historyColumns = useMemo<Array<TableColumn<PackagesUploadHistoryItem>>>(
-    () => [
-      {
-        key: 'createdAt',
-        title: '时间',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-foreground',
-        render: (_value: unknown, record: PackagesUploadHistoryItem) => (
-          <span suppressHydrationWarning>{formatDateTime(record.createdAt)}</span>
-        )
-      },
-      {
-        key: 'locale',
-        title: '语言',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top',
-        render: (_value: unknown, record: PackagesUploadHistoryItem) => (
-          <div className="flex items-center gap-2">
-            <span className="text-foreground">{record.locale}</span>
-            <Badge variant={record.locale === sourceLocale ? 'secondary' : 'outline'}>
-              {record.locale === sourceLocale ? '源' : '目标'}
-            </Badge>
-          </div>
-        )
-      },
-      {
-        key: 'operator',
-        title: '操作者',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-foreground',
-        render: (_value: unknown, record: PackagesUploadHistoryItem) => record.operator
-      },
-      {
-        key: 'summary',
-        title: '摘要',
-        headerClassName: 'bg-card px-3 py-2 text-left font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top',
-        render: (_value: unknown, record: PackagesUploadHistoryItem) => (
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline">新增 {record.summary.added}</Badge>
-            <Badge variant="outline">更新 {record.summary.updated}</Badge>
-            <Badge variant="outline">缺失 {record.summary.missing}</Badge>
-            {record.locale === sourceLocale ? (
-              <Badge variant="outline">待更新 {record.summary.markedNeedsUpdate}</Badge>
-            ) : (
-              <Badge variant="outline">忽略 {record.summary.ignored}</Badge>
-            )}
-          </div>
-        )
-      },
-      {
-        key: 'actions',
-        title: '操作',
-        headerClassName: 'bg-card px-3 py-2 text-right font-medium text-muted-foreground',
-        cellClassName: 'px-3 py-2 align-top text-right',
-        align: 'right',
-        render: (_value: unknown, record: PackagesUploadHistoryItem) => (
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void openHistoryDetail(record.id)}
-          >
-            <Eye />
-            查看
-          </Button>
-        )
-      }
-    ],
-    [openHistoryDetail, sourceLocale]
-  );
-
-  const loadContextNodes = async (force?: boolean) => {
-    if (contextBusy) return;
-    if (!force && contextLoaded) return;
-    setContextBusy(true);
-    setContextError(null);
-    try {
-      const res = await listPackagesContextNodesQuery(projectId);
-      if (!res.ok) {
-        setContextError(res.error);
-        setContextPages([]);
-        setContextLoaded(true);
-        return;
-      }
-      setContextPages(res.data.pages);
-      setContextLoaded(true);
-    } catch {
-      setContextError('加载页面/模块失败，请重试。');
-      setContextPages([]);
-      setContextLoaded(true);
-    } finally {
-      setContextBusy(false);
-    }
-  };
-
-  const resetCreateForm = () => {
-    setCreateError(null);
-    setCreateKeyMode('auto');
-    setCreateKey(`ctx_${randomShortId()}`);
-    setCreateSourceText('');
-    setCreateTargetLocale(targetLocales[0] ?? '');
-    setCreateTargetText('');
-    setCreatePageId('');
-    setCreateModuleId('');
-    setKeyCheck('idle');
-  };
-
-  const selectedPage = useMemo(() => {
-    const id = Number(createPageId);
-    if (!Number.isFinite(id)) return null;
-    return contextPages.find((p) => p.id === id) ?? null;
-  }, [contextPages, createPageId]);
-
-  const moduleOptions = useMemo(() => {
-    if (!selectedPage) return [];
-    return selectedPage.modules.map((m) => ({ value: String(m.id), label: m.name }));
-  }, [selectedPage]);
-
-  useEffect(() => {
-    if (!createOpen) return;
-    void loadContextNodes();
-  }, [createOpen]);
-
-  useEffect(() => {
-    if (tab !== 'import') return;
-    void loadContextNodes();
-  }, [tab]);
-
-  useEffect(() => {
-    if (!selectedPage) {
-      if (createModuleId) setCreateModuleId('');
-      return;
-    }
-    if (!createModuleId) return;
-    const id = Number(createModuleId);
-    const exists = selectedPage.modules.some((m) => m.id === id);
-    if (!exists) setCreateModuleId('');
-  }, [createModuleId, selectedPage]);
-
-  useEffect(() => {
-    if (!createOpen) return;
-    const key = createKey.trim();
-    if (!key) {
-      setKeyCheck('idle');
-      return;
-    }
-    if (entries.some((e) => e.key === key)) {
-      setKeyCheck('taken');
-      return;
-    }
-    setKeyCheck('checking');
-    const handle = window.setTimeout(async () => {
-      try {
-        const res = await checkPackagesEntryKeyQuery({ projectId, key });
-        if (!res.ok) {
-          setKeyCheck('error');
-          return;
-        }
-        setKeyCheck(res.data.available ? 'available' : 'taken');
-      } catch {
-        setKeyCheck('error');
-      }
-    }, 400);
-    return () => window.clearTimeout(handle);
-  }, [createKey, createOpen, entries, projectId]);
-
-  const handleCreateEntry = async () => {
-    if (!canManage) return;
-    const key = createKey.trim();
-    const sourceText = createSourceText.trim();
-    if (!key) {
-      setCreateError('请输入 key。');
-      return;
-    }
-    if (!sourceText) {
-      setCreateError('请输入源文案。');
-      return;
-    }
-    if (keyCheck === 'taken') {
-      setCreateError('key 已存在：请修改 key 或重新生成。');
-      return;
-    }
-    setCreateError(null);
-    setCreateBusy(true);
-    try {
-      const res = await createPackagesEntryAction({
-        projectId,
-        key,
-        sourceText,
-        targetLocale: createTargetLocale || undefined,
-        targetText: createTargetText.trim() ? createTargetText.trim() : undefined,
-        pageId: createPageId ? Number(createPageId) : undefined,
-        moduleId: createModuleId ? Number(createModuleId) : undefined
-      });
-      if (!res.ok) {
-        setCreateError(res.error);
-        return;
-      }
-
-      const refreshed = await listPackagesEntriesQuery(projectId);
-      if (refreshed.ok) setEntries(refreshed.data.items);
-
-      push({ variant: 'default', title: '新增成功', message: key });
-      setCreateOpen(false);
-      resetCreateForm();
-      setTab('entries');
-    } catch {
-      setCreateError('新增过程中发生异常，请重试。');
-    } finally {
-      setCreateBusy(false);
-    }
-  };
-
-  const resetImport = () => {
-    setImportBusy(false);
-    setImportStage('idle');
-    setImportError(null);
-    setImportFileName('');
-    setImportFileSize(null);
-    setImportRawJson('');
-    setImportPreview(null);
-    setImportMap(null);
-    setPreviewTab('added');
-    if (importFileRef.current) importFileRef.current.value = '';
-  };
-
-  const buildImportPreviewFromParsed = (parsed: {
-    shape: 'flat' | 'tree';
-    map: Record<string, string>;
-  }): ImportPreview => {
-    const incoming = parsed.map;
-    const incomingKeys = Object.keys(incoming);
-    const incomingTotal = incomingKeys.length;
-    const existingByKey = new Map(sortedEntries.map((e) => [e.key, e] as const));
-    let existingTotal = 0;
-    let existingWithPlacements = 0;
-
-    if (selectedLocale === sourceLocale) {
-      const added: ImportPreview['added'] = [];
-      const updated: ImportPreview['updated'] = [];
-
-      for (const key of incomingKeys) {
-        const next = incoming[key] ?? '';
-        const existing = existingByKey.get(key);
-        if (!existing) {
-          added.push({ key, text: next });
-          continue;
-        }
-        existingTotal += 1;
-        if (existing.placementCount > 0) existingWithPlacements += 1;
-        if (existing.sourceText !== next) {
-          updated.push({ key, before: existing.sourceText, after: next });
-        }
-      }
-
-      return {
-        kind: 'source',
-        shape: parsed.shape,
-        incomingKeys,
-        incomingTotal,
-        existingTotal,
-        existingWithPlacements,
-        summary: {
-          added: added.length,
-          updated: updated.length,
-          ignored: 0
-        },
-        added,
-        updated,
-        ignored: []
-      };
-    }
-
-    const ignored: ImportPreview['ignored'] = [];
-    const updated: ImportPreview['updated'] = [];
-
-    for (const key of incomingKeys) {
-      const existing = existingByKey.get(key);
-      if (!existing) {
-        ignored.push({ key });
-        continue;
-      }
-      existingTotal += 1;
-      if (existing.placementCount > 0) existingWithPlacements += 1;
-      const next = incoming[key] ?? '';
-      const before = existing.translations[selectedLocale]?.text ?? '';
-      if (next === before) continue;
-      if (!next.trim()) continue;
-      updated.push({ key, before, after: next });
-    }
-
-    return {
-      kind: 'target',
-      shape: parsed.shape,
-      incomingKeys,
-      incomingTotal,
-      existingTotal,
-      existingWithPlacements,
-      summary: {
-        added: 0,
-        updated: updated.length,
-        ignored: ignored.length
-      },
-      added: [],
-      updated,
-      ignored
-    };
-  };
-
-  const handlePickImportFile = async (file: File) => {
-    setImportError(null);
-    setImportBusy(true);
-    setImportStage('idle');
-    setImportPreview(null);
-    setImportMap(null);
-    setPreviewTab(selectedLocale === sourceLocale ? 'added' : 'updated');
-    setImportFileName(file.name);
-    setImportFileSize(file.size);
-    try {
-      const text = await file.text();
-      setImportRawJson(text);
-      const parsed = parseLanguagePack(text);
-      if (!parsed.ok) {
-        setImportError(parsed.error);
-        setImportStage('idle');
-        return;
-      }
-      setImportMap(parsed.data.map);
-      const preview = buildImportPreviewFromParsed({ shape: parsed.data.shape, map: parsed.data.map });
-      setPreviewTab(() => {
-        if (preview.kind === 'source') return 'added';
-        if (preview.summary.updated > 0) return 'updated';
-        if (preview.summary.ignored > 0) return 'ignored';
-        return 'updated';
-      });
-      setImportPreview(preview);
-      setImportStage('parsed');
-    } catch {
-      setImportError('读取文件失败，请重试。');
-    } finally {
-      setImportBusy(false);
-    }
-  };
-
-  const handleConfirmImport = async (bindPlan: ImportBindPlanDraft | null) => {
-    if (!importRawJson.trim()) return;
-    if (!importPreview) return;
-    if (importPreview.summary.added + importPreview.summary.updated === 0) return;
-    setImportError(null);
-    setImportBusy(true);
-    try {
-      const normalizedBindPlan =
-        !bindPlan
-          ? undefined
-          : bindPlan.mode === 'single'
-            ? {
-                mode: 'single' as const,
-                scope: bindPlan.scope,
-                target: {
-                  pageId:
-                    bindPlan.pageMode === 'existing' && bindPlan.pageId ? Number(bindPlan.pageId) : undefined,
-                  moduleId:
-                    bindPlan.moduleMode === 'existing' && bindPlan.moduleId ? Number(bindPlan.moduleId) : undefined
-                },
-                createContext: {
-                  page:
-                    bindPlan.pageMode === 'create' && bindPlan.createPageRoute?.trim()
-                      ? {
-                          route: bindPlan.createPageRoute.trim(),
-                          title: bindPlan.createPageTitle?.trim() ? bindPlan.createPageTitle.trim() : undefined
-                        }
-                      : undefined,
-                  module:
-                    bindPlan.moduleMode === 'create' && bindPlan.createModuleName?.trim()
-                      ? { name: bindPlan.createModuleName.trim() }
-                      : undefined
-                }
-              }
-            : {
-                mode: 'per_key' as const,
-                scope: bindPlan.scope,
-                items: bindPlan.items
-                  .map((it) => ({
-                    key: it.key,
-                    pageId: Number(it.pageId),
-                    moduleId: it.moduleId ? Number(it.moduleId) : undefined
-                  }))
-                  .filter((it) => Number.isFinite(it.pageId))
-              };
-
-      const res = await importLanguagePackAction({
-        projectId,
-        locale: selectedLocale,
-        rawJson: importRawJson,
-        bindPlan: normalizedBindPlan
-      });
-      if (!res.ok) {
-        setImportError(res.error);
-        return;
-      }
-
-      const refreshed = await listPackagesEntriesQuery(projectId);
-      if (refreshed.ok) setEntries(refreshed.data.items);
-      if (res.ok && res.data.bind) {
-        await loadContextNodes(true);
-      }
-
-      setImportStage('confirmed');
-      if (res.data.bind && res.data.bind.targetsCount === 1 && typeof res.data.bind.pageId === 'number') {
-        const qs = new URLSearchParams({ pageId: String(res.data.bind.pageId) });
-        if (typeof res.data.bind.moduleId === 'number') {
-          qs.set('moduleId', String(res.data.bind.moduleId));
-        }
-        setLastImportContextLink(`/projects/${projectId}/context?${qs.toString()}`);
-      } else {
-        setLastImportContextLink(null);
-      }
-      const bindHint = res.data.bind ? ` · 已设置归属 ${res.data.bind.boundCount} 条` : '';
-      push({
-        variant: 'default',
-        title: '导入成功',
-        message:
-          res.data.kind === 'source'
-            ? `新增 ${res.data.summary.added} · 更新 ${res.data.summary.updated} · 标记待更新 ${res.data.summary.markedNeedsUpdate}`
-            : `更新 ${res.data.summary.updated} · 忽略 ${res.data.summary.ignored} · 跳过空值 ${res.data.summary.skippedEmpty}` + bindHint
-      });
-      setTab('history');
-      setHistoryLoaded(false);
-    } catch {
-      setImportError('导入过程中发生异常，请重试。');
-    } finally {
-      setImportBusy(false);
-    }
-  };
 
   const handleDownload = async () => {
     try {
@@ -869,67 +186,17 @@ export function ProjectPackagesClient({
 
   return (
     <div className="space-y-6">
-      <PlacementsDialog
-        open={placementsOpen}
-        onOpenChange={setPlacementsOpen}
-        placementsEntry={placementsEntry}
-        placements={placements}
-        placementsError={placementsError}
-        placementsBusy={placementsBusy}
-        projectId={projectId}
-      />
-
-      <HistoryDetailSheet
-        open={detailOpen}
-        onOpenChange={(open) => {
-          setDetailOpen(open);
-          if (!open) {
-            setDetail(null);
-            setDetailError(null);
-          }
-        }}
-        detail={detail}
-        detailBusy={detailBusy}
-        detailError={detailError}
-        sourceLocale={sourceLocale}
-        targetLocales={targetLocales}
-        projectId={projectId}
-      />
-
-      <CreateEntrySheet
+      <CreateEntrySheetContainer
         open={createOpen}
-        onOpenChange={(open) => {
-          setCreateOpen(open);
-          if (!open) setCreateError(null);
-        }}
+        onOpenChange={setCreateOpen}
         canManage={canManage}
-        createError={createError}
-        createBusy={createBusy}
-        keyCheck={keyCheck}
-        createKey={createKey}
-        createKeyMode={createKeyMode}
-        onKeyChange={setCreateKey}
-        onKeyModeChange={setCreateKeyMode}
-        onGenerateKey={() => setCreateKey(`ctx_${randomShortId()}`)}
-        createSourceText={createSourceText}
-        onSourceTextChange={setCreateSourceText}
-        createTargetLocale={createTargetLocale}
-        onTargetLocaleChange={setCreateTargetLocale}
-        createTargetText={createTargetText}
-        onTargetTextChange={setCreateTargetText}
-        createPageId={createPageId}
-        onPageChange={setCreatePageId}
-        createModuleId={createModuleId}
-        onModuleChange={setCreateModuleId}
-        contextError={contextError}
-        contextLoaded={contextLoaded}
-        contextBusy={contextBusy}
-        contextPages={contextPages}
-        selectedPage={selectedPage}
-        moduleOptions={moduleOptions}
         targetLocales={targetLocales}
-        onSubmit={() => void handleCreateEntry()}
         projectId={projectId}
+        entries={entries}
+        onEntriesUpdated={setEntries}
+        onCreated={() => {
+          setTab('entries');
+        }}
       />
 
       <Card>
@@ -994,7 +261,6 @@ export function ProjectPackagesClient({
                 variant="outline"
                 onClick={() => {
                   setTab('import');
-                  requestAnimationFrame(() => importFileRef.current?.focus());
                 }}
               >
                 <Upload />
@@ -1021,7 +287,6 @@ export function ProjectPackagesClient({
                 type="button"
                 disabled={!canManage}
                 onClick={() => {
-                  resetCreateForm();
                   setCreateOpen(true);
                 }}
               >
@@ -1080,9 +345,9 @@ export function ProjectPackagesClient({
                       setPage(1);
                     }}
                     isSource={isSource}
+                    selectedLocale={selectedLocale}
                     filteredTotal={filteredTotal}
                     entriesError={entriesError}
-                    entryColumns={entryColumns}
                     pageItems={pageItems}
                     page={page}
                     pageCount={pageCount}
@@ -1096,27 +361,18 @@ export function ProjectPackagesClient({
                 label: '上传导入',
                 content: (
                   <ImportTabContent
+                    active={tab === 'import'}
                     selectedLocale={selectedLocale}
-                    isSource={isSource}
-                    importBusy={importBusy}
-                    importStage={importStage}
-                    importFileRef={importFileRef}
-                    importFileName={importFileName}
-                    importFileSize={importFileSize}
-                    importPreview={importPreview}
-                    importMap={importMap}
-                    importError={importError}
-                    previewTab={previewTab}
-                    onPreviewTabChange={(value) => setPreviewTab(value)}
-                    onPickFile={handlePickImportFile}
-                    onReset={resetImport}
-                    onConfirm={(bindPlan) => void handleConfirmImport(bindPlan)}
+                    sourceLocale={sourceLocale}
+                    entries={entries}
                     canManage={canManage}
-                    contextError={contextError}
-                    contextLoaded={contextLoaded}
-                    contextBusy={contextBusy}
-                    contextPages={contextPages}
                     projectId={projectId}
+                    onEntriesUpdated={setEntries}
+                    onImportSuccess={(contextLink) => {
+                      setLastImportContextLink(contextLink);
+                      setTab('history');
+                      setHistoryRefreshSignal((s) => s + 1);
+                    }}
                   />
                 )
               },
@@ -1124,19 +380,13 @@ export function ProjectPackagesClient({
                 value: 'history',
                 label: '上传历史',
                 content: (
-                  <HistoryTabContent
-                    historyQuery={historyQuery}
-                    onHistoryQueryChange={setHistoryQuery}
-                    historyBusy={historyBusy}
-                    historyError={historyError}
-                    onRefresh={() => void loadHistory(true)}
-                    historyColumns={historyColumns}
-                    historyPageItems={historyPageItems}
-                    historyPage={historyPage}
-                    historyPageCount={historyPageCount}
-                    historyFilteredTotal={historyFilteredTotal}
-                    onPageChange={setHistoryPage}
+                  <HistoryPanel
+                    active={tab === 'history'}
+                    projectId={projectId}
+                    sourceLocale={sourceLocale}
+                    targetLocales={targetLocales}
                     contextLink={lastImportContextLink}
+                    refreshSignal={historyRefreshSignal}
                   />
                 )
               }
