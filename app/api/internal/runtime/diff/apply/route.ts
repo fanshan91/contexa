@@ -59,9 +59,8 @@ export async function POST(request: Request) {
       return validationError(res.error);
     }
 
-    return jsonOk({ applied: true, applyId: parsed.data.applyId });
+    return jsonOk({ applied: true, applyId: parsed.data.applyId, stats: res.stats });
   } catch (err) {
     return fromUnknownError(err);
   }
 }
-

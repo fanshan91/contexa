@@ -4,6 +4,7 @@ import { createHmac } from 'node:crypto';
 import { env } from '@/lib/env';
 import { getCoreInstanceId, getEnhancedConfig, getEnhancedSessionTokens, setEnhancedSessionTokens, setLastSuccessfulHeartbeat } from '@/lib/enhanced/state';
 import type { EnhancedAuthMode, EnhancedConfig } from '@/lib/enhanced/state';
+import type { RuntimeDiffApplyStats } from '@/lib/runtime/apply-runtime-diff';
 
 export type EnhancedDisconnectReason =
   | 'not_configured'
@@ -404,7 +405,7 @@ export type RuntimeDiffApplyInput = {
 
 export async function applyRuntimeDiffViaEnhanced(
   input: RuntimeDiffApplyInput
-): Promise<EnhancedConnectionState & { data?: { applyId: string } }> {
+): Promise<EnhancedConnectionState & { data?: { applyId: string; stats?: RuntimeDiffApplyStats | null } }> {
   const ctx = await getRequestContext({ method: 'POST', path: '/api/internal/runtime/diff/apply' });
   if (!ctx.endpoint) {
     return { connected: false, reason: 'not_configured' };
@@ -421,7 +422,7 @@ export async function applyRuntimeDiffViaEnhanced(
     if (!res.ok || !json?.ok) {
       return { connected: false, reason: resolveFailureReason(res.status) };
     }
-    return { connected: true, data: json.data ?? { applyId: '' } };
+    return { connected: true, data: json.data ?? { applyId: '', stats: null } };
   } catch {
     return { connected: false, reason: 'unreachable' };
   }

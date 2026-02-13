@@ -25,6 +25,21 @@ enum GlossaryItemStatus {
   disabled
 }
 
+enum RuntimeCaptureSessionStatusV2 {
+  active
+  closing
+  closed
+  expired
+}
+
+enum RuntimeCaptureCloseReasonV2 {
+  saved
+  discarded
+  timeout
+  forced
+  conflict
+}
+
 model SystemMeta {
   key         String   @id
   value       String
@@ -57,6 +72,8 @@ model User {
   glossaryTermsUpdated ProjectGlossaryTerm[] @relation("GlossaryTermUpdatedBy")
   negativePromptsCreated ProjectNegativePrompt[] @relation("NegativePromptCreatedBy")
   negativePromptsUpdated ProjectNegativePrompt[] @relation("NegativePromptUpdatedBy")
+  runtimeSessionDraftOps RuntimeSessionDraftOp[]
+  runtimeCaptureGatesOpened RuntimeCaptureGate[]
 }
 
 model Team {
@@ -130,6 +147,7 @@ model Project {
   members     ProjectMember[]
   entries     Entry[]
   translations Translation[]
+  languagePackTemplateItems LanguagePackTemplateItem[]
   pages       Page[]
   locks       TranslationPageLock[]
   packageUploads PackageUpload[]
@@ -138,6 +156,14 @@ model Project {
   runtimeSessions RuntimeSession[]
   runtimeEvents RuntimeEvent[]
   runtimeAggregates RuntimeKeyAggregate[]
+  runtimeSessionAggregates RuntimeSessionKeyAggregate[]
+  runtimeSessionDraftOps RuntimeSessionDraftOp[]
+  runtimeCaptureGate RuntimeCaptureGate?
+  runtimeCaptureSessionsV2 RuntimeCaptureSessionV2[]
+  runtimeCaptureBatchesV2 RuntimeCaptureBatchV2[]
+  runtimeCaptureItemsV2 RuntimeCaptureItemV2[]
+  runtimeCaptureRouteStatsV2 RuntimeCaptureRouteStatV2[]
+  runtimeCaptureApplyRunsV2 RuntimeCaptureApplyRunV2[]
   createdBy   User?    @relation("ProjectCreatedBy", fields: [createdByUserId], references: [id])
   invitations ProjectInvitation[]
   localePreferences UserProjectLocalePreference[]
@@ -175,9 +201,31 @@ model RuntimeSession {
   project    Project            @relation(fields: [projectId], references: [id])
   events     RuntimeEvent[]
   aggregates RuntimeKeyAggregate[]
+  sessionAggregates RuntimeSessionKeyAggregate[]
+  draftOps   RuntimeSessionDraftOp[]
+  captureGate RuntimeCaptureGate?
 
   @@index([projectId, status])
   @@index([projectId, lastSeenAt])
+}
+
+model RuntimeCaptureGate {
+  projectId       Int      @id
+  status          String   @default("closed")
+  sessionId       Int?     @unique
+  openedByUserId  Int?
+  openedAt        DateTime?
+  userLastSeenAt  DateTime?
+  closedAt        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  project  Project       @relation(fields: [projectId], references: [id])
+  session  RuntimeSession? @relation(fields: [sessionId], references: [id])
+  openedBy User?         @relation(fields: [openedByUserId], references: [id])
+
+  @@index([status])
+  @@index([userLastSeenAt])
 }
 
 model RuntimeEvent {
@@ -216,6 +264,151 @@ model RuntimeKeyAggregate {
   @@unique([projectId, route, key])
   @@index([projectId, lastSeenAt])
   @@index([projectId, route, lastSeenAt])
+}
+
+model RuntimeSessionKeyAggregate {
+  id         Int      @id @default(autoincrement())
+  projectId  Int
+  sessionId  Int
+  route      String
+  key        String
+  sourceText String
+  count      Int      @default(0)
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  session RuntimeSession @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, route, key])
+  @@index([projectId, sessionId])
+  @@index([projectId, route, lastSeenAt])
+  @@index([projectId, lastSeenAt])
+}
+
+model RuntimeSessionDraftOp {
+  id            Int      @id @default(autoincrement())
+  projectId     Int
+  sessionId     Int
+  route         String
+  key           String
+  action        String
+  targetPageId  Int?
+  targetModuleId Int?
+  createdByUserId Int?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+  session RuntimeSession @relation(fields: [sessionId], references: [id])
+  createdBy User? @relation(fields: [createdByUserId], references: [id])
+
+  @@unique([sessionId, route, key])
+  @@index([projectId, sessionId])
+  @@index([projectId, updatedAt])
+}
+
+model RuntimeCaptureSessionV2 {
+  id          Int                           @id @default(autoincrement())
+  projectId   Int
+  sdkIdentity String
+  env         String?
+  status      RuntimeCaptureSessionStatusV2 @default(active)
+  startedAt   DateTime                      @default(now())
+  lastSeenAt  DateTime                      @default(now())
+  closedAt    DateTime?
+  closeReason RuntimeCaptureCloseReasonV2?
+  summaryJson String?
+  createdAt   DateTime                      @default(now())
+  updatedAt   DateTime                      @updatedAt
+
+  project   Project                   @relation(fields: [projectId], references: [id])
+  batches   RuntimeCaptureBatchV2[]
+  items     RuntimeCaptureItemV2[]
+  routeStats RuntimeCaptureRouteStatV2[]
+  applyRuns RuntimeCaptureApplyRunV2[]
+
+  @@index([projectId, status])
+  @@index([projectId, lastSeenAt])
+  @@index([projectId, startedAt])
+}
+
+model RuntimeCaptureBatchV2 {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  sessionId   Int
+  sdkIdentity String
+  batchId     String
+  receivedCount Int    @default(0)
+  createdAt   DateTime @default(now())
+
+  project Project                @relation(fields: [projectId], references: [id])
+  session RuntimeCaptureSessionV2 @relation(fields: [sessionId], references: [id])
+
+  @@unique([projectId, sessionId, batchId, sdkIdentity])
+  @@index([projectId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model RuntimeCaptureItemV2 {
+  id             Int      @id @default(autoincrement())
+  projectId      Int
+  sessionId      Int
+  route          String
+  key            String
+  lastSourceText String
+  sourceTextHash String
+  seenCount      Int      @default(0)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  project Project                @relation(fields: [projectId], references: [id])
+  session RuntimeCaptureSessionV2 @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, route, key])
+  @@index([projectId, sessionId])
+  @@index([projectId, route, lastSeenAt])
+  @@index([sessionId, lastSeenAt])
+}
+
+model RuntimeCaptureRouteStatV2 {
+  id               Int      @id @default(autoincrement())
+  projectId        Int
+  sessionId        Int
+  route            String
+  keysTotal        Int      @default(0)
+  newKeysCount     Int      @default(0)
+  textChangedCount Int      @default(0)
+  lastSeenAt       DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  project Project                @relation(fields: [projectId], references: [id])
+  session RuntimeCaptureSessionV2 @relation(fields: [sessionId], references: [id])
+
+  @@unique([sessionId, route])
+  @@index([projectId, sessionId])
+  @@index([projectId, lastSeenAt])
+}
+
+model RuntimeCaptureApplyRunV2 {
+  id          Int      @id @default(autoincrement())
+  projectId   Int
+  sessionId   Int
+  status      String
+  summaryJson String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project Project                @relation(fields: [projectId], references: [id])
+  session RuntimeCaptureSessionV2 @relation(fields: [sessionId], references: [id])
+
+  @@index([projectId, createdAt])
+  @@index([sessionId, createdAt])
 }
 
 model ProjectSetting {
@@ -314,6 +507,20 @@ model Entry {
 
   @@unique([projectId, key])
   @@index([projectId])
+}
+
+model LanguagePackTemplateItem {
+  id        Int      @id @default(autoincrement())
+  projectId Int
+  signature String
+  position  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id])
+
+  @@unique([projectId, signature])
+  @@index([projectId, position])
 }
 
 model Translation {

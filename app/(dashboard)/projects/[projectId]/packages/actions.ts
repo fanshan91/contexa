@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { getTranslations } from 'next-intl/server';
 import { prisma } from '@/lib/db/prisma';
 import { getProjectPermissionChecker } from '@/lib/auth/project-permissions-server';
-import { parseLanguagePack } from '@/lib/packages/language-pack-parser';
+import { parseLanguagePack, type EntryDraft } from '@/lib/packages/language-pack-parser';
 import { importSourcePack, importTargetPack } from '@/lib/packages/repo';
 
 const projectIdSchema = z.coerce.number().int().positive();
@@ -53,38 +53,40 @@ async function getProjectTemplateShape(projectId: number): Promise<'flat' | 'tre
   return meta?.value === 'tree' ? 'tree' : 'flat';
 }
 
-async function getProjectTemplatePaths(projectId: number): Promise<string[][]> {
-  const key = `project:${projectId}:langpack:template`;
-  const meta = await prisma.systemMeta.findUnique({ where: { key } });
-  if (!meta?.value) return [];
-  try {
-    const parsed = JSON.parse(meta.value) as string[][];
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((p) => Array.isArray(p) && p.every((s) => typeof s === 'string'));
-  } catch {
-    return [];
+async function rebuildLanguagePackTemplateItems(projectId: number, drafts: EntryDraft[]) {
+  const seen = new Set<string>();
+  const items: Array<{ signature: string; position: number }> = [];
+  for (let i = 0; i < drafts.length; i += 1) {
+    const signature = drafts[i]?.originalPath?.join('.') ?? '';
+    if (!signature) continue;
+    if (seen.has(signature)) continue;
+    seen.add(signature);
+    items.push({ signature, position: items.length });
   }
+
+  await prisma.$transaction(async (tx) => {
+    const templateTx = tx as any;
+    await templateTx.languagePackTemplateItem.deleteMany({ where: { projectId } });
+    for (const chunk of chunkArray(items, 1000)) {
+      await templateTx.languagePackTemplateItem.createMany({
+        data: chunk.map((it) => ({
+          projectId,
+          signature: it.signature,
+          position: it.position
+        }))
+      });
+    }
+  });
 }
 
-async function upsertProjectTemplatePaths(projectId: number, incoming: string[][]) {
-  const key = `project:${projectId}:langpack:template`;
-  const existing = await getProjectTemplatePaths(projectId);
-  const existingSet = new Set(existing.map((p) => p.join('.')));
-  const next = [...existing];
-  for (const path of incoming) {
-    const signature = path.join('.');
-    if (!signature) continue;
-    if (existingSet.has(signature)) continue;
-    existingSet.add(signature);
-    next.push(path);
-  }
-  if (next.length === existing.length) return;
-  const value = JSON.stringify(next);
-  await prisma.systemMeta.upsert({
-    where: { key },
-    update: { value },
-    create: { key, value, description: 'language pack template paths for export' }
+async function getLanguagePackTemplateSignatures(projectId: number): Promise<string[]> {
+  const templateClient = prisma as any;
+  const rows = await templateClient.languagePackTemplateItem.findMany({
+    where: { projectId },
+    orderBy: { position: 'asc' },
+    select: { signature: true }
   });
+  return rows.map((r: { signature: string }) => r.signature);
 }
 
 type PackageUploadDetails = {
@@ -1075,12 +1077,7 @@ export async function importLanguagePackAction(
           data: { key: shapeKey, value: parsedPack.data.shape, description: 'language pack structure shape for export' }
         });
       }
-      if ((existingShape?.value ?? parsedPack.data.shape) === 'tree' && parsedPack.data.shape === 'tree') {
-        await upsertProjectTemplatePaths(
-          parsed.data.projectId,
-          parsedPack.data.drafts.map((d) => d.originalPath)
-        );
-      }
+      await rebuildLanguagePackTemplateItems(parsed.data.projectId, parsedPack.data.drafts);
 
       let bind: ImportBindSummary | undefined;
       if (normalizedBindPlan) {
@@ -1453,45 +1450,68 @@ export async function exportLanguagePackAction(
     });
 
     const isSource = parsed.data.locale === project.sourceLocale;
-    const outMap: Record<string, string> = {};
+    const valueByKey = new Map<string, string>();
     for (const e of entries) {
       if (isSource) {
-        outMap[e.key] = e.sourceText;
+        valueByKey.set(e.key, e.sourceText);
         continue;
       }
       const tr = e.translations[0];
       const hasText = Boolean(tr?.text?.trim());
       if (parsed.data.mode === 'filled' && !hasText) continue;
-      if (hasText) outMap[e.key] = tr!.text as string;
-      else outMap[e.key] = parsed.data.mode === 'fallback' ? e.sourceText : '';
+      if (hasText) valueByKey.set(e.key, tr!.text as string);
+      else valueByKey.set(e.key, parsed.data.mode === 'fallback' ? e.sourceText : '');
     }
 
     const shape = await getProjectTemplateShape(parsed.data.projectId);
     if (shape === 'flat') {
+      const templateSignatures = await getLanguagePackTemplateSignatures(parsed.data.projectId);
+      const orderedOutMap: Record<string, string> = {};
+      if (templateSignatures.length) {
+        const used = new Set<string>();
+        for (const signature of templateSignatures) {
+          const value = valueByKey.get(signature);
+          if (value === undefined) continue;
+          orderedOutMap[signature] = value;
+          used.add(signature);
+        }
+        for (const e of entries) {
+          const value = valueByKey.get(e.key);
+          if (value === undefined) continue;
+          if (used.has(e.key)) continue;
+          orderedOutMap[e.key] = value;
+        }
+      } else {
+        for (const e of entries) {
+          const value = valueByKey.get(e.key);
+          if (value === undefined) continue;
+          orderedOutMap[e.key] = value;
+        }
+      }
       return {
         ok: true,
         data: {
           fileName: `project-${parsed.data.projectId}.${parsed.data.locale}.json`,
-          content: JSON.stringify(outMap, null, 2)
+          content: JSON.stringify(orderedOutMap, null, 2)
         }
       };
     }
 
-    const templatePaths = await getProjectTemplatePaths(parsed.data.projectId);
-    const fallbackPaths = Object.keys(outMap).map((k) => k.split('.'));
-    const paths = templatePaths.length > 0 ? templatePaths : fallbackPaths;
-
+    const templateSignatures = await getLanguagePackTemplateSignatures(parsed.data.projectId);
+    const templateKeySet = new Set(templateSignatures);
     const tree: Record<string, unknown> = {};
-    for (const path of paths) {
-      const key = path.join('.');
-      if (!key) continue;
-      const value = outMap[key] ?? '';
-      setPathValue(tree, path, value);
+    if (templateSignatures.length) {
+      for (const signature of templateSignatures) {
+        const value = valueByKey.get(signature);
+        if (value === undefined) continue;
+        setPathValue(tree, signature.split('.'), value);
+      }
     }
-
-    for (const key of Object.keys(outMap)) {
-      if (paths.some((p) => p.join('.') === key)) continue;
-      setPathValue(tree, key.split('.'), outMap[key]);
+    for (const e of entries) {
+      const value = valueByKey.get(e.key);
+      if (value === undefined) continue;
+      if (templateKeySet.has(e.key)) continue;
+      setPathValue(tree, e.key.split('.'), value);
     }
 
     return {

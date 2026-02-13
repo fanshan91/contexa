@@ -5,6 +5,7 @@
     "predev": "prisma generate",
     "prebuild": "prisma generate",
     "dev": "next dev --turbopack",
+    "dev:quiet": "node scripts/next-dev-quiet.mjs",
     "dev:classic": "next dev",
     "dev:debug": "NODE_OPTIONS=--inspect next dev",
     "build": "next build",
@@ -56,6 +57,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "baseline-browser-mapping": "^2.9.19",
     "prisma": "^6.2.1",
     "tsx": "^4.19.2"
   }

@@ -15,6 +15,14 @@ type ApplyOp = {
   targetModuleId?: number | null;
 };
 
+export type RuntimeDiffApplyStats = {
+  entriesCreated: number;
+  translationsCreated: number;
+  placementsCreated: number;
+  placementsDeleted: number;
+  rootModulesCreated: number;
+};
+
 async function getProjectLocales(projectId: number) {
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -25,12 +33,20 @@ async function getProjectLocales(projectId: number) {
 }
 
 export async function applyRuntimeDiffOperations(input: { projectId: number; operations: ApplyOp[] }) {
+  const stats: RuntimeDiffApplyStats = {
+    entriesCreated: 0,
+    translationsCreated: 0,
+    placementsCreated: 0,
+    placementsDeleted: 0,
+    rootModulesCreated: 0
+  };
+
   const localeConfig = await getProjectLocales(input.projectId);
   if (!localeConfig) return { ok: false as const, error: '项目不存在' };
   const targetLocales = localeConfig.locales.filter((l) => l !== localeConfig.sourceLocale);
 
   const ops = input.operations.filter((o) => o.action !== 'ignore');
-  if (ops.length === 0) return { ok: true as const };
+  if (ops.length === 0) return { ok: true as const, stats };
 
   await prisma.$transaction(async (tx) => {
     const existingEntries = await tx.entry.findMany({
@@ -51,6 +67,7 @@ export async function applyRuntimeDiffOperations(input: { projectId: number; ope
         },
         select: { id: true }
       });
+      stats.entriesCreated += 1;
       entryIdByKey.set(key, created.id);
       if (targetLocales.length) {
         await tx.translation.createMany({
@@ -62,6 +79,7 @@ export async function applyRuntimeDiffOperations(input: { projectId: number; ope
             status: 'pending'
           }))
         });
+        stats.translationsCreated += targetLocales.length;
       }
       return created.id;
     };
@@ -77,6 +95,7 @@ export async function applyRuntimeDiffOperations(input: { projectId: number; ope
           data: { pageId, name: ROOT_MODULE_NAME },
           select: { id: true }
         });
+        stats.rootModulesCreated += 1;
         return created.id;
       } catch (error: any) {
         if (error?.code === 'P2002') {
@@ -93,9 +112,10 @@ export async function applyRuntimeDiffOperations(input: { projectId: number; ope
     for (const op of ops) {
       if (op.action === 'delete') {
         if (!op.entryId || !op.currentModuleId) continue;
-        await tx.entryPlacement.deleteMany({
+        const deleted = await tx.entryPlacement.deleteMany({
           where: { entryId: op.entryId, moduleId: op.currentModuleId }
         });
+        stats.placementsDeleted += deleted.count;
         continue;
       }
 
@@ -111,19 +131,20 @@ export async function applyRuntimeDiffOperations(input: { projectId: number; ope
           : await ensureEntry(op.key, op.sourceText?.trim() ? op.sourceText.trim() : '—');
 
       if (op.currentModuleId && op.kind === 'move') {
-        await tx.entryPlacement.deleteMany({
+        const deleted = await tx.entryPlacement.deleteMany({
           where: { entryId, moduleId: op.currentModuleId }
         });
+        stats.placementsDeleted += deleted.count;
       }
 
-      await tx.entryPlacement
-        .create({
+      try {
+        await tx.entryPlacement.create({
           data: { entryId, moduleId: targetModuleId }
-        })
-        .catch(() => null);
+        });
+        stats.placementsCreated += 1;
+      } catch {}
     }
   });
 
-  return { ok: true as const };
+  return { ok: true as const, stats };
 }
-

@@ -22,7 +22,7 @@ const alertVariants = cva(
   }
 );
 
-type AlertProps = React.ComponentProps<"div"> &
+type AlertProps = Omit<React.ComponentProps<"div">, "title"> &
   VariantProps<typeof alertVariants> & {
     title?: React.ReactNode;
     description?: React.ReactNode;
